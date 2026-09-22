@@ -1,0 +1,19 @@
+# Força HTTPS e www: descomente depois de confirmar que https://www.erpvanguard.com.br abre
+# (se a hospedagem usa Cloudflare/proxy, prefira a opção "Forçar HTTPS" do painel)
+# RewriteEngine On
+# RewriteCond %{HTTPS} off [OR]
+# RewriteCond %{HTTP_HOST} !^www\. [NC]
+# RewriteRule ^ https://www.erpvanguard.com.br%{REQUEST_URI} [L,R=301]
+
+# Cache dos arquivos estáticos (os nomes em /assets mudam a cada build)
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 month"
+  ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript image/svg+xml
+</IfModule>

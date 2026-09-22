@@ -23,6 +23,12 @@ npm run build    # gera os arquivos estáticos em landing/dist
 O conteúdo (módulos, integrações, WhatsApp de contato) fica em `landing/src/data.js`.
 Troque `WHATSAPP_NUMBER` pelo número comercial antes de publicar.
 
+### Deploy em hospedagem compartilhada (cPanel / public_html)
+
+1. `cd landing && npm run build`
+2. Compacte **o conteúdo** de `landing/dist/` (inclusive o `.htaccess` oculto) e envie para `public_html` pelo Gerenciador de Arquivos do cPanel.
+3. Extraia lá dentro: o `index.html` precisa ficar direto em `public_html/`, não numa subpasta.
+
 ### Deploy na VPS (Nginx + HTTPS)
 
 ```bash
