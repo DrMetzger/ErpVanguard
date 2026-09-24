@@ -9,6 +9,8 @@ set -euo pipefail
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
 APP_DIR="/opt/vanguard"
 SWAP_SIZE="${SWAP_SIZE:-2G}"
+# SSH_KEY_ONLY=1 desliga o login por senha (só depois de ter chave no seu PC).
+SSH_KEY_ONLY="${SSH_KEY_ONLY:-0}"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 
@@ -44,8 +46,8 @@ if [ -s /root/.ssh/authorized_keys ]; then
 fi
 
 log "SSH"
-# Senha só é desligada quando já existe chave, para ninguém ficar trancado para fora.
-if [ -s "/home/$DEPLOY_USER/.ssh/authorized_keys" ]; then
+# Senha só é desligada quando pedido e já existe chave, para ninguém ficar trancado para fora.
+if [ "$SSH_KEY_ONLY" = "1" ] && [ -s "/home/$DEPLOY_USER/.ssh/authorized_keys" ]; then
   cat > /etc/ssh/sshd_config.d/90-vanguard.conf <<'CONF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -54,8 +56,9 @@ CONF
   systemctl reload ssh
   echo "Login por senha desativado (somente chave SSH)."
 else
-  echo "AVISO: nenhuma chave SSH encontrada. Login por senha continua ativo."
-  echo "Adicione sua chave pública no hPanel (VPS > Chaves SSH) e rode o script de novo."
+  rm -f /etc/ssh/sshd_config.d/90-vanguard.conf
+  echo "Login por senha continua ativo (fail2ban protege contra força bruta)."
+  echo "Para exigir chave SSH: SSH_KEY_ONLY=1 bash vps-setup.sh"
 fi
 
 log "Firewall (SSH, HTTP, HTTPS)"
