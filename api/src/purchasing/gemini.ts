@@ -24,7 +24,7 @@ export interface AiMatch {
 }
 
 const logger = new Logger('Gemini')
-const RETRIES = 3
+const RETRIES = 2
 const RETRYABLE = new Set([429, 500, 503])
 // Exposto para os testes não esperarem de verdade.
 export let retryDelayMs = 2000
@@ -49,8 +49,8 @@ ${JSON.stringify(items)}
 PRODUTOS DO CADASTRO:
 ${JSON.stringify(candidates)}`
 
-  const request = () =>
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`, {
+  const request = (model: string) =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey! },
       body: JSON.stringify({
@@ -60,16 +60,30 @@ ${JSON.stringify(candidates)}`
       signal: AbortSignal.timeout(60_000),
     })
 
-  // 429 (cota) e 503 (alta demanda) costumam passar em segundos: tenta de novo.
-  let res = await request()
-  for (let attempt = 1; attempt < RETRIES && RETRYABLE.has(res.status); attempt++) {
-    logger.warn(`Gemini respondeu ${res.status}, tentando de novo (${attempt + 1}/${RETRIES})`)
-    await new Promise((r) => setTimeout(r, retryDelayMs * attempt))
-    res = await request()
+  // Cada modelo tenta algumas vezes em 429/5xx; se continuar lotado (ou não
+  // existir mais), passa para o próximo da lista de reserva.
+  const models = [...new Set([config.geminiModel, ...config.geminiFallbackModels])]
+  let res: Response | null = null
+  outer: for (const model of models) {
+    for (let attempt = 1; attempt <= RETRIES; attempt++) {
+      res = await request(model)
+      if (res.ok) {
+        if (model !== config.geminiModel) logger.warn(`Usando modelo reserva ${model}`)
+        break outer
+      }
+      if (res.status === 404) break // modelo descontinuado: próximo
+      if (!RETRYABLE.has(res.status)) break outer // erro definitivo (chave, requisição)
+      if (attempt < RETRIES) {
+        logger.warn(`${model} respondeu ${res.status}, tentando de novo (${attempt + 1}/${RETRIES})`)
+        await new Promise((r) => setTimeout(r, retryDelayMs * attempt))
+      }
+    }
+    logger.warn(`${model} indisponível (${res!.status}), tentando o próximo modelo`)
   }
-  if (!res.ok) {
-    logger.error(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`)
-    throw new Error(RETRYABLE.has(res.status) ? 'O Gemini está sobrecarregado agora. Tente de novo em alguns instantes.' : `O Gemini respondeu com erro ${res.status}`)
+  if (!res || !res.ok) {
+    const status = res?.status ?? 0
+    logger.error(`Gemini respondeu ${status}: ${res ? (await res.text()).slice(0, 300) : ''}`)
+    throw new Error(RETRYABLE.has(status) || status === 404 ? 'O Gemini está sobrecarregado agora. Tente de novo em alguns instantes.' : `O Gemini respondeu com erro ${status}`)
   }
   const data: any = await res.json()
   const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? '').join('') ?? '[]'

@@ -6,6 +6,7 @@ process.env.DATABASE_URL ??= 'postgres://x'
 process.env.JWT_SECRET ??= 'x'
 process.env.GEMINI_API_KEY = 'chave-falsa'
 process.env.GEMINI_MODEL = 'modelo-teste'
+process.env.GEMINI_FALLBACK_MODELS = 'reserva-1,reserva-2'
 const { matchWithGemini, setRetryDelay } = createRequire(import.meta.url)('../dist/purchasing/gemini.js')
 setRetryDelay(1)
 
@@ -39,7 +40,7 @@ await assert.rejects(() => matchWithGemini(items, candidates), /inválida/)
 let calls = 0
 globalThis.fetch = async () => { calls++; return new Response('quota', { status: 429 }) }
 await assert.rejects(() => matchWithGemini(items, candidates), /sobrecarregado/)
-assert.equal(calls, 3, 'deveria tentar 3 vezes')
+assert.equal(calls, 6, 'deveria tentar 2 vezes em cada um dos 3 modelos')
 globalThis.fetch = async () => new Response('bad', { status: 400 })
 await assert.rejects(() => matchWithGemini(items, candidates), /400/)
 
@@ -49,5 +50,16 @@ const ok = reply(JSON.stringify([{ itemNumber: 1, productId: 'p-1', confidence: 
 globalThis.fetch = async (...args) => (++calls === 1 ? new Response('busy', { status: 503 }) : ok(...args))
 assert.equal((await matchWithGemini(items, candidates))[0].productId, 'p-1')
 assert.equal(calls, 2)
-console.log('  ✓ 503/429 tentam de novo (até 3 vezes); 400 falha na hora')
+// Principal lotado (503) e 1ª reserva descontinuada (404): usa a 2ª reserva.
+const seen = []
+globalThis.fetch = async (url, init) => {
+  const model = url.match(/models\/([^:]+):/)[1]
+  seen.push(model)
+  if (model === 'modelo-teste') return new Response('busy', { status: 503 })
+  if (model === 'reserva-1') return new Response('gone', { status: 404 })
+  return ok(url, init)
+}
+assert.equal((await matchWithGemini(items, candidates))[0].productId, 'p-1')
+assert.deepEqual(seen, ['modelo-teste', 'modelo-teste', 'reserva-1', 'reserva-2'])
+console.log('  ✓ 503/429 tentam de novo; modelo lotado ou descontinuado cai para o reserva; 400 falha na hora')
 console.log('  ✓ resposta inválida ou erro do Google viram erro tratado')

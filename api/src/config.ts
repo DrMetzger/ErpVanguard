@@ -13,6 +13,9 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD,
   geminiApiKey: process.env.GEMINI_API_KEY || null,
   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  // Usados em ordem quando o modelo principal está lotado ou indisponível.
+  geminiFallbackModels: (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.7-flash,gemini-3.5-flash,gemini-flash-lite-latest')
+    .split(',').map((m) => m.trim()).filter(Boolean),
   // Origens do app Android (Capacitor). O site usa o mesmo domínio e não precisa de CORS.
   corsOrigins: (process.env.CORS_ORIGINS ?? 'https://localhost,capacitor://localhost').split(',').map((o) => o.trim()),
 }
