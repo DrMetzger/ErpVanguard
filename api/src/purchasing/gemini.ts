@@ -24,6 +24,11 @@ export interface AiMatch {
 }
 
 const logger = new Logger('Gemini')
+const RETRIES = 3
+const RETRYABLE = new Set([429, 500, 503])
+// Exposto para os testes não esperarem de verdade.
+export let retryDelayMs = 2000
+export const setRetryDelay = (ms: number) => { retryDelayMs = ms }
 
 export const aiEnabled = () => !!config.geminiApiKey
 
@@ -44,18 +49,27 @@ ${JSON.stringify(items)}
 PRODUTOS DO CADASTRO:
 ${JSON.stringify(candidates)}`
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0 },
-    }),
-    signal: AbortSignal.timeout(60_000),
-  })
+  const request = () =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey! },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+      }),
+      signal: AbortSignal.timeout(60_000),
+    })
+
+  // 429 (cota) e 503 (alta demanda) costumam passar em segundos: tenta de novo.
+  let res = await request()
+  for (let attempt = 1; attempt < RETRIES && RETRYABLE.has(res.status); attempt++) {
+    logger.warn(`Gemini respondeu ${res.status}, tentando de novo (${attempt + 1}/${RETRIES})`)
+    await new Promise((r) => setTimeout(r, retryDelayMs * attempt))
+    res = await request()
+  }
   if (!res.ok) {
     logger.error(`Gemini respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`)
-    throw new Error(`O Gemini respondeu com erro ${res.status}`)
+    throw new Error(RETRYABLE.has(res.status) ? 'O Gemini está sobrecarregado agora. Tente de novo em alguns instantes.' : `O Gemini respondeu com erro ${res.status}`)
   }
   const data: any = await res.json()
   const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? '').join('') ?? '[]'
