@@ -12,7 +12,7 @@ export const config = {
   adminEmail: process.env.ADMIN_EMAIL ?? 'admin@erpvanguard.com.br',
   adminPassword: process.env.ADMIN_PASSWORD,
   geminiApiKey: process.env.GEMINI_API_KEY || null,
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   // Origens do app Android (Capacitor). O site usa o mesmo domínio e não precisa de CORS.
   corsOrigins: (process.env.CORS_ORIGINS ?? 'https://localhost,capacitor://localhost').split(',').map((o) => o.trim()),
 }

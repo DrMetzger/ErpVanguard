@@ -36,7 +36,7 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   conhecido, código de barras, descrição parecida com o item do pedido e, sob demanda, o **Gemini**.
   Ao lançar, o sistema aprende a amarração produto × fornecedor.
 - **IA (Gemini):** crie o secret `GEMINI_API_KEY` no GitHub; o deploy grava no `.env` da VPS.
-  Opcional: a variável `GEMINI_MODEL` (padrão `gemini-2.5-flash`).
+  Opcional: a variável `GEMINI_MODEL` (padrão `gemini-3.8-flash`).
 
 Testes: `npm test` (integração com o Gemini simulada) e `npm run test:compras` (fluxo completo contra
 uma API rodando, com `API`, `ADMIN_EMAIL` e `ADMIN_PASSWORD`).
