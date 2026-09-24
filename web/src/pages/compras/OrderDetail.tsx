@@ -35,7 +35,7 @@ export default function OrderDetail() {
   return (
     <>
       <PageHeader
-        back={<Anchor component={Link} to=".." relative="path" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Pedidos</Group></Anchor>}
+        back={<Anchor component={Link} to="/compras/pedidos" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Pedidos</Group></Anchor>}
         title={<Group gap="sm">{o.code} <Status value={o.status} /></Group>}
         description={`Emitido em ${date(o.createdAt)} por ${o.buyerName}${o.quotationCode ? ` · origem ${o.quotationCode}` : ''}`}
         actions={<><Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => window.print()}>Imprimir</Button>{canCancel && <Button variant="subtle" color="red" onClick={cancel} loading={busy}>Cancelar pedido</Button>}</>}

@@ -24,7 +24,7 @@ export default function Account() {
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card>
           <Group>
-            <Avatar size={72} radius="xl" variant="gradient" gradient={{ from: 'vanguard.5', to: 'cyan.5', deg: 135 }}>{initials(user.name)}</Avatar>
+            <Avatar size={72} radius="xl" variant="gradient">{initials(user.name)}</Avatar>
             <div>
               <Text fw={700} size="xl">{user.name}</Text>
               <Text c="dimmed" size="sm">{user.email}</Text>

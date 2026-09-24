@@ -32,7 +32,7 @@ export default function Users() {
                   <Table.Tr key={u.id} opacity={u.active ? 1 : 0.5}>
                     <Table.Td>
                       <Group gap="sm" wrap="nowrap">
-                        <Avatar radius="xl" color="vanguard" variant="light">{initials(u.name)}</Avatar>
+                        <Avatar radius="xl" color="brand" variant="light">{initials(u.name)}</Avatar>
                         <div><Text size="sm" fw={600}>{u.name}{u.id === me.id && <Text span c="dimmed" size="xs"> (você)</Text>}</Text><Text size="xs" c="dimmed">{u.email}</Text></div>
                       </Group>
                     </Table.Td>

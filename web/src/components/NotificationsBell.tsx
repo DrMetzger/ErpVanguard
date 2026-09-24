@@ -8,7 +8,7 @@ import type { Notice } from '../lib/types'
 
 const KIND = {
   aprovacao: { icon: IconChecks, color: 'yellow' },
-  cotacao: { icon: IconScale, color: 'vanguard' },
+  cotacao: { icon: IconScale, color: 'brand' },
   nota: { icon: IconFileInvoice, color: 'cyan' },
   solicitacao: { icon: IconFileText, color: 'teal' },
   reprovado: { icon: IconAlertTriangle, color: 'red' },

@@ -11,7 +11,7 @@ import type { Invoice, InvoiceItem, Product } from '../../lib/types'
 const SOURCE: Record<string, [string, string, string]> = {
   amarracao: ['Já conhecido', 'teal', 'Código do fornecedor usado em nota anterior'],
   ean: ['Código de barras', 'teal', 'EAN da nota igual ao do produto'],
-  pedido: ['Pelo pedido', 'vanguard', 'Descrição parecida com o item do pedido'],
+  pedido: ['Pelo pedido', 'brand', 'Descrição parecida com o item do pedido'],
   ia: ['IA', 'violet', 'Sugerido pelo Gemini'],
   manual: ['Manual', 'gray', 'Escolhido por você'],
 }
@@ -32,12 +32,12 @@ export default function InvoiceDetail() {
     run(async () => setData(await api<Invoice>(`/invoices/${id}`, { method: 'PUT', body: { items: [], ...body } })))
   const ai = () => run(async () => setData(await api<Invoice>(`/invoices/${id}/ai-match`, { method: 'POST' })), 'Sugestões da IA aplicadas')
   const post = () => confirm('Lançar a nota? O estoque e o custo médio dos produtos serão atualizados.') && run(async () => setData(await api<Invoice>(`/invoices/${id}/post`, { method: 'POST' })), 'Nota lançada')
-  const remove = () => confirm('Excluir esta nota importada?') && run(async () => { await api(`/invoices/${id}`, { method: 'DELETE' }); navigate('..', { relative: 'path' }) }, 'Nota excluída')
+  const remove = () => confirm('Excluir esta nota importada?') && run(async () => { await api(`/invoices/${id}`, { method: 'DELETE' }); navigate('/compras/notas') }, 'Nota excluída')
 
   return (
     <>
       <PageHeader
-        back={<Anchor component={Link} to=".." relative="path" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Notas</Group></Anchor>}
+        back={<Anchor component={Link} to="/compras/notas" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Notas</Group></Anchor>}
         title={<Group gap="sm">NF {nf.number}{nf.series && `/${nf.series}`} <Status value={nf.status} /></Group>}
         description={<Text span ff="monospace" size="xs">{nf.accessKey}</Text>}
         actions={pending && <Button variant="subtle" color="red" leftSection={<IconTrash size={16} />} onClick={remove} loading={busy}>Excluir</Button>}

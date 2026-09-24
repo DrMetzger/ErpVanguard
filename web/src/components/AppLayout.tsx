@@ -71,7 +71,7 @@ export default function AppLayout() {
             <Tooltip label="Meu perfil">
               <UnstyledButton onClick={() => navigate('/minha-conta')} aria-label="Meu perfil" className="profile-btn">
                 <Group gap={10} wrap="nowrap">
-                  <Avatar color="vanguard" variant="gradient" gradient={{ from: 'vanguard.5', to: 'cyan.5', deg: 135 }} radius="xl" size={38}>
+                  <Avatar variant="gradient" radius="xl" size={38}>
                     {initials(user.name)}
                   </Avatar>
                   <Box visibleFrom="md" style={{ lineHeight: 1.2 }}>

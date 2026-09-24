@@ -23,7 +23,7 @@ export default function Quotations() {
               <Table.Thead><Table.Tr><Table.Th>Número</Table.Th><Table.Th>Grupo</Table.Th><Table.Th>Comprador</Table.Th><Table.Th ta="right">Itens</Table.Th><Table.Th ta="right">Fornecedores</Table.Th><Table.Th>Prazo</Table.Th><Table.Th>Situação</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>
                 {data?.map((q) => (
-                  <Table.Tr key={q.id} style={{ cursor: 'pointer' }} onClick={() => navigate(q.id)}>
+                  <Table.Tr key={q.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/compras/cotacoes/${q.id}`)}>
                     <Table.Td fw={700}>{q.code}</Table.Td>
                     <Table.Td>{q.purchaseGroupName}</Table.Td>
                     <Table.Td>{q.buyerName}</Table.Td>
@@ -39,7 +39,7 @@ export default function Quotations() {
         )}
         {data?.length === 0 && <Empty>Nenhuma cotação. Clique em "Nova cotação" para cotar os itens das solicitações.</Empty>}
       </Card>
-      {creating && <QuotationForm onClose={() => setCreating(false)} onCreated={(q) => navigate(q.id)} />}
+      {creating && <QuotationForm onClose={() => setCreating(false)} onCreated={(q) => navigate(`/compras/cotacoes/${q.id}`)} />}
     </>
   )
 }

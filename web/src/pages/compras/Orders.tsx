@@ -19,7 +19,7 @@ export default function Orders() {
   return (
     <>
       <Group mb="md"><Select data={STATUSES} value={status} onChange={(v) => setStatus(v ?? '')} allowDeselect={false} w={260} aria-label="Filtrar por situação" /></Group>
-      <OrderTable orders={data} loading={loading} onOpen={(o) => navigate(o.id)} empty="Nenhum pedido. Eles são gerados ao finalizar uma cotação." />
+      <OrderTable orders={data} loading={loading} onOpen={(o) => navigate(`/compras/pedidos/${o.id}`)} empty="Nenhum pedido. Eles são gerados ao finalizar uma cotação." />
     </>
   )
 }

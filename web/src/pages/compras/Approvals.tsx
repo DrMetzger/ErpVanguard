@@ -10,7 +10,7 @@ export default function Approvals() {
   return (
     <>
       <Text c="dimmed" mb="md">Pedidos que estão no seu nível de aprovação.</Text>
-      <OrderTable orders={data} loading={loading} onOpen={(o) => navigate(`../pedidos/${o.id}`)} empty="Nada aguardando sua aprovação. 👍" />
+      <OrderTable orders={data} loading={loading} onOpen={(o) => navigate(`/compras/pedidos/${o.id}`)} empty="Nada aguardando sua aprovação. 👍" />
     </>
   )
 }

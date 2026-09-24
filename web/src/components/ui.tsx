@@ -5,8 +5,8 @@ import { api } from '../lib/api'
 import type { Product } from '../lib/types'
 
 const STATUS: Record<string, [string, string]> = {
-  aberta: ['Aberta', 'vanguard'], em_cotacao: ['Em cotação', 'yellow'], atendida: ['Atendida', 'teal'], cancelada: ['Cancelada', 'gray'],
-  pendente: ['Pendente', 'vanguard'], cotacao: ['Em cotação', 'yellow'], pedido: ['Pedido gerado', 'teal'], cancelado: ['Cancelado', 'gray'],
+  aberta: ['Aberta', 'brand'], em_cotacao: ['Em cotação', 'yellow'], atendida: ['Atendida', 'teal'], cancelada: ['Cancelada', 'gray'],
+  pendente: ['Pendente', 'brand'], cotacao: ['Em cotação', 'yellow'], pedido: ['Pedido gerado', 'teal'], cancelado: ['Cancelado', 'gray'],
   finalizada: ['Finalizada', 'teal'], aguardando_aprovacao: ['Aguardando aprovação', 'yellow'], aprovado: ['Aprovado', 'teal'],
   reprovado: ['Reprovado', 'red'], recebido_parcial: ['Recebido parcial', 'cyan'], recebido: ['Recebido', 'teal'], lancada: ['Lançada', 'teal'],
 }

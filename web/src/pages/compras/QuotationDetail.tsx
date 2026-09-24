@@ -96,7 +96,7 @@ export default function QuotationDetail() {
   return (
     <>
       <PageHeader
-        back={<Anchor component={Link} to=".." relative="path" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Cotações</Group></Anchor>}
+        back={<Anchor component={Link} to="/compras/cotacoes" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Cotações</Group></Anchor>}
         title={<Group gap="sm">{q.code} <Status value={q.status} /></Group>}
         description={`${q.purchaseGroupName} · comprador ${q.buyerName} · prazo ${date(q.deadline)}`}
         actions={open && <><Button variant="subtle" color="red" onClick={cancel} loading={busy}>Cancelar cotação</Button><Button variant="default" onClick={save} loading={busy}>Salvar preços</Button></>}
@@ -104,7 +104,7 @@ export default function QuotationDetail() {
 
       {created && (
         <Alert color="teal" icon={<IconCircleCheck />} title="Pedidos gerados" mb="md">
-          <List size="sm">{created.map((o) => <List.Item key={o.id}><Anchor component={Link} to={`../../pedidos/${o.id}`} relative="path" fw={600}>{o.code}</Anchor> · {o.supplierName} · {money(o.total)} · <Status value={o.status} /></List.Item>)}</List>
+          <List size="sm">{created.map((o) => <List.Item key={o.id}><Anchor component={Link} to={`/compras/pedidos/${o.id}`} fw={600}>{o.code}</Anchor> · {o.supplierName} · {money(o.total)} · <Status value={o.status} /></List.Item>)}</List>
         </Alert>
       )}
 

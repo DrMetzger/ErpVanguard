@@ -15,7 +15,7 @@ export default function Dashboard() {
   const low = products?.filter((p) => p.active && p.stock <= p.minStock).length
   const value = products?.reduce((sum, p) => sum + p.stock * p.costPrice, 0)
   const stats = [
-    { label: 'Produtos cadastrados', value: products?.length, icon: IconBox, color: 'vanguard' },
+    { label: 'Produtos cadastrados', value: products?.length, icon: IconBox, color: 'brand' },
     { label: 'Abaixo do estoque mínimo', value: low, icon: IconAlertTriangle, color: 'yellow' },
     { label: 'Valor do estoque (custo)', value: value === undefined ? undefined : money(value), icon: IconCash, color: 'teal' },
   ]

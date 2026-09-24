@@ -43,7 +43,7 @@ export default function Compras() {
   return (
     <>
       <Title order={2} mb="md">Compras</Title>
-      <Tabs value={current} onChange={(v) => v && navigate(v)} mb="lg" className="no-print">
+      <Tabs value={current} onChange={(v) => v && navigate(`/compras/${v}`)} mb="lg" className="no-print">
         <Tabs.List style={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
           {tabs.map((t) => <Tabs.Tab key={t.path} value={t.path} leftSection={<t.icon size={16} />}>{t.label}</Tabs.Tab>)}
         </Tabs.List>

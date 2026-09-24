@@ -30,14 +30,14 @@ export default function Invoices() {
     }
     setBusy(false)
     reload()
-    if (results.length === 1 && results[0]!.ok) navigate(results[0]!.id!)
+    if (results.length === 1 && results[0]!.ok) navigate(`/compras/notas/${results[0]!.id}`)
   }
 
   return (
     <>
       <Dropzone onDrop={importFiles} loading={busy} accept={['text/xml', 'application/xml', '.xml']} radius="lg" mb="md" data-testid="xml-dropzone">
         <Group justify="center" gap="xl" mih={130} style={{ pointerEvents: 'none' }}>
-          <Dropzone.Accept><IconUpload size={48} stroke={1.4} color="var(--mantine-color-vanguard-5)" /></Dropzone.Accept>
+          <Dropzone.Accept><IconUpload size={48} stroke={1.4} color="var(--mantine-primary-color-filled)" /></Dropzone.Accept>
           <Dropzone.Reject><IconCircleX size={48} stroke={1.4} color="var(--mantine-color-red-6)" /></Dropzone.Reject>
           <Dropzone.Idle><IconFileCode size={48} stroke={1.4} opacity={0.6} /></Dropzone.Idle>
           <div>
@@ -64,7 +64,7 @@ export default function Invoices() {
               <Table.Thead><Table.Tr><Table.Th>Nota</Table.Th><Table.Th>Fornecedor</Table.Th><Table.Th>Emissão</Table.Th><Table.Th>Pedido</Table.Th><Table.Th ta="right">Total</Table.Th><Table.Th>Situação</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>
                 {data?.map((n) => (
-                  <Table.Tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => navigate(n.id)}>
+                  <Table.Tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/compras/notas/${n.id}`)}>
                     <Table.Td fw={700}>{n.number}{n.series && `/${n.series}`}</Table.Td>
                     <Table.Td>{n.supplierName}</Table.Td>
                     <Table.Td>{date(n.issueDate)}</Table.Td>
