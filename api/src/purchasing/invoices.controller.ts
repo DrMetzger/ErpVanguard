@@ -9,7 +9,8 @@ import { requirePermission } from '../common/access'
 import { digits, numbers, one } from '../common/db'
 import type { User } from '../users/user.entity'
 import { isValidDocument } from './documents'
-import { aiEnabled, matchWithGemini } from './gemini'
+import { SettingsService } from '../settings/settings.service'
+import { matchWithGemini } from './gemini'
 import { parseNfe } from './nfe'
 import { code, found } from './purchasing.helpers'
 import { similarity } from './similarity'
@@ -34,7 +35,7 @@ const RECEIVABLE = ['aprovado', 'recebido_parcial']
 
 @Controller('invoices')
 export class InvoicesController {
-  constructor(private readonly db: DataSource) {}
+  constructor(private readonly db: DataSource, private readonly settings: SettingsService) {}
 
   @Get()
   async list(@CurrentUser() me: User) {
@@ -99,7 +100,13 @@ export class InvoicesController {
         )
       }
       await this.autoMatch(tx, id)
-      return this.load(tx, id)
+      return id
+    }).then(async (id) => {
+      // Opção "IA automática" das Configurações: tenta amarrar o que sobrou, sem travar a importação.
+      if ((await this.settings.nfe()).autoAi && (await this.settings.gemini()).apiKey) {
+        await this.aiMatchItems(id).catch(() => undefined)
+      }
+      return this.load(this.db, id)
     })
   }
 
@@ -143,15 +150,25 @@ export class InvoicesController {
   @Post(':id/ai-match')
   async aiMatch(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
     requirePermission(me, 'comprador')
-    if (!aiEnabled()) throw new ServiceUnavailableException('A IA ainda não foi configurada (GEMINI_API_KEY)')
     await this.pending(this.db, id)
+    try {
+      await this.aiMatchItems(id)
+    } catch (error: any) {
+      throw new ServiceUnavailableException(error.message)
+    }
+    return this.load(this.db, id)
+  }
+
+  private async aiMatchItems(id: string) {
+    const gemini = await this.settings.gemini()
+    if (!gemini.apiKey) throw new Error('A IA ainda não foi configurada (Administração > Configurações)')
 
     const items = await this.db.query(
       `SELECT item_number AS "itemNumber", description, supplier_code AS "supplierCode", ean, ncm, unit
        FROM invoice_items WHERE invoice_id = $1 AND product_id IS NULL ORDER BY item_number`,
       [id],
     )
-    if (!items.length) return this.load(this.db, id)
+    if (!items.length) return
 
     // Candidatos: produtos mais parecidos com cada item + produtos do pedido.
     const products = await this.db.query(`SELECT id, sku, name, ncm, unit FROM products WHERE active`)
@@ -169,24 +186,18 @@ export class InvoicesController {
     }
     const candidates = products.filter((p: any) => picked.has(p.id)).slice(0, 200)
 
-    let matches
-    try {
-      matches = await matchWithGemini(items, candidates)
-    } catch (error: any) {
-      throw new ServiceUnavailableException(error.message)
-    }
+    const { matches, model } = await matchWithGemini(items, candidates, gemini)
     await this.db.transaction(async (tx) => {
       for (const m of matches) {
         if (!m.productId || m.confidence < 0.5) continue
         await tx.query(
           `UPDATE invoice_items SET product_id = $3, match_source = 'ia', match_note = $4
            WHERE invoice_id = $1 AND item_number = $2 AND product_id IS NULL`,
-          [id, m.itemNumber, m.productId, `${Math.round(m.confidence * 100)}% · ${m.reason}`],
+          [id, m.itemNumber, m.productId, `${Math.round(m.confidence * 100)}% · ${m.reason}${model ? ` (${model})` : ''}`],
         )
       }
       await this.autoMatch(tx, id)
     })
-    return this.load(this.db, id)
   }
 
   // Lança a nota: entrada no estoque, custo médio, baixa no pedido e amarração produto x fornecedor.
@@ -390,7 +401,7 @@ export class InvoicesController {
       warnings,
       orders,
       orderItems,
-      aiEnabled: aiEnabled(),
+      aiEnabled: !!(await this.settings.gemini()).apiKey,
     }
   }
 }

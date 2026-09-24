@@ -41,5 +41,6 @@ export const theme = createTheme({
     Modal: { defaultProps: { radius: 'lg', centered: true, overlayProps: { blur: 3, backgroundOpacity: 0.6 } } },
     Tooltip: { defaultProps: { withArrow: true } },
     Table: { defaultProps: { highlightOnHover: true, verticalSpacing: 'sm' } },
+    Badge: { styles: { root: { textTransform: 'none', flexShrink: 0 } } },
   },
 })

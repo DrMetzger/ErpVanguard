@@ -1,8 +1,10 @@
-import { Avatar, Badge, Button, Card, Group, PasswordInput, SimpleGrid, Stack, Text, Title } from '@mantine/core'
+import { Badge, Button, Card, Group, PasswordInput, SegmentedControl, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { IconRefresh } from '@tabler/icons-react'
+import { AVATAR_STYLES, UserAvatar, type AvatarStyle } from '../components/UserAvatar'
 import { useState, type FormEvent } from 'react'
 import { api } from '../lib/api'
-import { useUser } from '../lib/auth'
-import { initials } from '../lib/format'
+import { useAuth, useUser } from '../lib/auth'
+import type { User } from '../lib/types'
 import { useAction } from '../lib/hooks'
 
 export default function Account() {
@@ -24,7 +26,7 @@ export default function Account() {
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card>
           <Group>
-            <Avatar size={72} radius="xl" variant="gradient">{initials(user.name)}</Avatar>
+            <UserAvatar size={72} name={user.name} avatar={user.avatar} />
             <div>
               <Text fw={700} size="xl">{user.name}</Text>
               <Text c="dimmed" size="sm">{user.email}</Text>
@@ -33,6 +35,7 @@ export default function Account() {
           <Group gap={6} mt="lg">
             {user.role === 'admin' ? <Badge variant="light">Administrador</Badge> : user.permissions.map((p) => <Badge key={p} variant="light" color="gray" tt="capitalize">{p}</Badge>)}
           </Group>
+          <AvatarPicker />
         </Card>
         <Card component="form" onSubmit={submit}>
           <Title order={4} mb="md">Trocar senha</Title>
@@ -45,5 +48,40 @@ export default function Account() {
         </Card>
       </SimpleGrid>
     </>
+  )
+}
+
+// Escolha do avatar: estilo + 12 variações (dá para sortear outras).
+function AvatarPicker() {
+  const user = useUser()
+  const { refresh } = useAuth()
+  const [style, setStyle] = useState<AvatarStyle>(((user.avatar?.split(':')[0] as AvatarStyle) in AVATAR_STYLES ? user.avatar!.split(':')[0] : 'notionists') as AvatarStyle)
+  const [round, setRound] = useState(0)
+  const { busy, run } = useAction()
+  const seeds = Array.from({ length: 12 }, (_, i) => `${user.id.slice(0, 8)}-${round}-${i}`)
+  const choose = (avatar: string | null) => run(async () => { await api<User>('/auth/me', { method: 'PATCH', body: { avatar } }); await refresh() }, 'Avatar atualizado')
+
+  return (
+    <Stack mt="xl" gap="sm">
+      <Group justify="space-between">
+        <Text fw={700}>Avatar</Text>
+        <Group gap="xs">
+          <Tooltip label="Outras opções"><Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={() => setRound((r) => r + 1)}>Sortear</Button></Tooltip>
+          <Button variant="subtle" size="xs" onClick={() => choose(null)} disabled={!user.avatar || busy}>Usar iniciais</Button>
+        </Group>
+      </Group>
+      <SegmentedControl size="xs" value={style} onChange={(v) => setStyle(v as AvatarStyle)} data={Object.entries(AVATAR_STYLES).map(([value, s]) => ({ value, label: s.label }))} style={{ overflowX: 'auto' }} />
+      <SimpleGrid cols={6} spacing="xs">
+        {seeds.map((seed) => {
+          const value = `${style}:${seed}`
+          return (
+            <UnstyledButton key={seed} onClick={() => choose(value)} aria-label="Escolher avatar" className={`avatar-option ${user.avatar === value ? 'selected' : ''}`}>
+              <UserAvatar name={user.name} avatar={value} size={52} />
+            </UnstyledButton>
+          )
+        })}
+      </SimpleGrid>
+      <Text size="xs" c="dimmed">Desenhos do DiceBear (licenças livres para uso comercial), gerados aqui mesmo, sem enviar seus dados para fora.</Text>
+    </Stack>
   )
 }

@@ -24,13 +24,20 @@ export class ProductsController {
   constructor(@InjectRepository(Product) private readonly products: Repository<Product>) {}
 
   @Get()
-  list(@Query('q') q?: string) {
+  async list(@Query('q') q?: string) {
     const term = q?.trim()
-    return this.products.find({
+    const rows = await this.products.find({
       where: term ? [{ name: ILike(`%${term}%`) }, { sku: ILike(`%${term}%`) }] : {},
       order: { name: 'ASC' },
-      take: 200,
+      take: 500,
     })
+    // Nome do tipo e do grupo para a tela (sem precisar de outra chamada).
+    const [types, groups] = await Promise.all([
+      this.products.query(`SELECT id, code || ' · ' || description AS label FROM product_types`),
+      this.products.query(`SELECT id, code || ' · ' || name AS label FROM product_groups`),
+    ])
+    const label = (list: { id: string; label: string }[], id: string | null) => list.find((x) => x.id === id)?.label ?? null
+    return rows.map((p) => ({ ...p, typeLabel: label(types, p.typeId), groupLabel: label(groups, p.groupId) }))
   }
 
   @Get(':id')
@@ -64,6 +71,9 @@ export class ProductsController {
     } catch (error) {
       if (error instanceof QueryFailedError && (error as { code?: string }).code === UNIQUE_VIOLATION) {
         throw new ConflictException('Já existe um produto com este código (SKU)')
+      }
+      if (error instanceof QueryFailedError && (error as { code?: string }).code === '23503') {
+        throw new ConflictException('Tipo ou grupo de produto não encontrado')
       }
       throw error
     }

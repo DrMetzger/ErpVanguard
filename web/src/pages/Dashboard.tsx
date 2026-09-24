@@ -40,7 +40,7 @@ export default function Dashboard() {
       </SimpleGrid>
 
       <Title order={4} mb="md">Módulos</Title>
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }}>
         {modules.map((m) => (
           <UnstyledButton key={m.path} onClick={() => navigate(m.path)}>
             <Card className="module-card" h="100%">

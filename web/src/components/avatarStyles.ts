@@ -1,0 +1,7 @@
+export * as avataaars from '@dicebear/avataaars'
+export * as bottts from '@dicebear/bottts'
+export * as lorelei from '@dicebear/lorelei'
+export * as notionists from '@dicebear/notionists'
+export * as openPeeps from '@dicebear/open-peeps'
+export * as pixelArt from '@dicebear/pixel-art'
+export * as thumbs from '@dicebear/thumbs'

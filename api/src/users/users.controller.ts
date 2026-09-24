@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import * as bcrypt from 'bcryptjs'
-import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, MinLength } from 'class-validator'
+import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MinLength } from 'class-validator'
 import { Repository } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { requireAdmin } from '../common/access'
@@ -21,6 +21,11 @@ class UpdateUserDto {
   @IsOptional() @IsArray() @ArrayUnique() @IsIn(PERMISSIONS, { each: true }) permissions?: Permission[]
   @IsOptional() @IsBoolean() active?: boolean
   @IsOptional() @IsString() @MinLength(8, { message: 'A senha precisa ter pelo menos 8 caracteres' }) password?: string
+}
+
+class AvatarDto {
+  // "estilo:semente" (DiceBear) ou vazio para iniciais.
+  @IsOptional() @IsString() @Matches(/^[a-z-]{2,30}:[\w-]{1,40}$/, { message: 'Avatar inválido' }) avatar?: string | null
 }
 
 class ChangePasswordDto {
@@ -69,6 +74,12 @@ export class UsersController {
     if (password) user.passwordHash = await bcrypt.hash(password, 12)
     const { passwordHash: _, ...profile } = await this.users.save(user)
     return profile
+  }
+
+  @Patch('auth/me')
+  async updateMe(@CurrentUser() me: User, @Body() dto: AvatarDto) {
+    await this.users.update(me.id, { avatar: dto.avatar || null })
+    return this.users.findOneBy({ id: me.id })
   }
 
   @Post('auth/password')

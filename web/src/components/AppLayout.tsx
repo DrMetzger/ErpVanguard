@@ -1,14 +1,14 @@
 import {
-  ActionIcon, AppShell, Avatar, Box, Burger, Divider, Group, NavLink, ScrollArea, Stack, Text, Tooltip, UnstyledButton, useComputedColorScheme, useMantineColorScheme,
+  ActionIcon, AppShell, Box, Burger, Divider, Group, NavLink, ScrollArea, Stack, Text, Tooltip, UnstyledButton, useComputedColorScheme, useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure, useLocalStorage, useMediaQuery } from '@mantine/hooks'
-import { IconDoorExit, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMoon, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
+import { IconDoorExit, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth, useUser } from '../lib/auth'
-import { initials } from '../lib/format'
 import { home, modules } from '../modules'
 import { Logo } from './Logo'
 import { NotificationsBell } from './NotificationsBell'
+import { UserAvatar } from './UserAvatar'
 
 const ROLE_LABEL = (role: string, permissions: string[]) =>
   role === 'admin' ? 'Administrador' : permissions.length ? permissions.map((p) => p[0]!.toUpperCase() + p.slice(1)).join(' · ') : 'Usuário'
@@ -71,9 +71,7 @@ export default function AppLayout() {
             <Tooltip label="Meu perfil">
               <UnstyledButton onClick={() => navigate('/minha-conta')} aria-label="Meu perfil" className="profile-btn">
                 <Group gap={10} wrap="nowrap">
-                  <Avatar variant="gradient" radius="xl" size={38}>
-                    {initials(user.name)}
-                  </Avatar>
+                  <UserAvatar name={user.name} avatar={user.avatar} size={38} />
                   <Box visibleFrom="md" style={{ lineHeight: 1.2 }}>
                     <Text size="sm" fw={600}>{user.name}</Text>
                     <Text size="xs" c="dimmed">{ROLE_LABEL(user.role, user.permissions)}</Text>
@@ -99,6 +97,7 @@ export default function AppLayout() {
                 {!mini && <Text size="xs" fw={700} c="dimmed" tt="uppercase" mt="md" mb={4} px="sm">Administração</Text>}
                 {mini && <Divider my="sm" />}
                 {link({ path: '/usuarios', icon: IconUsers, title: 'Usuários' })}
+                {link({ path: '/configuracoes', icon: IconSettings, title: 'Configurações' })}
               </>
             )}
           </Stack>

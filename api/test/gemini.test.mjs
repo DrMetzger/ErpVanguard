@@ -4,11 +4,11 @@ import { createRequire } from 'node:module'
 
 process.env.DATABASE_URL ??= 'postgres://x'
 process.env.JWT_SECRET ??= 'x'
-process.env.GEMINI_API_KEY = 'chave-falsa'
-process.env.GEMINI_MODEL = 'modelo-teste'
-process.env.GEMINI_FALLBACK_MODELS = 'reserva-1,reserva-2'
-const { matchWithGemini, setRetryDelay } = createRequire(import.meta.url)('../dist/purchasing/gemini.js')
-setRetryDelay(1)
+const gemini = createRequire(import.meta.url)('../dist/purchasing/gemini.js')
+gemini.setRetryDelay(1)
+const opts = { apiKey: 'chave-falsa', model: 'modelo-teste', fallbackModels: ['reserva-1', 'reserva-2'] }
+const matchWithGemini = async (i, c) => (await gemini.matchWithGemini(i, c, opts)).matches
+const matchFull = (i, c) => gemini.matchWithGemini(i, c, opts)
 
 const items = [
   { itemNumber: 1, description: 'PARAF SEXT 5MM ZB', supplierCode: 'A1', ean: null, ncm: '73181500', unit: 'UN' },
@@ -59,7 +59,9 @@ globalThis.fetch = async (url, init) => {
   if (model === 'reserva-1') return new Response('gone', { status: 404 })
   return ok(url, init)
 }
-assert.equal((await matchWithGemini(items, candidates))[0].productId, 'p-1')
+const full = await matchFull(items, candidates)
+assert.equal(full.matches[0].productId, 'p-1')
+assert.equal(full.model, 'reserva-2', 'deve informar qual modelo respondeu')
 assert.deepEqual(seen, ['modelo-teste', 'modelo-teste', 'reserva-1', 'reserva-2'])
 console.log('  ✓ 503/429 tentam de novo; modelo lotado ou descontinuado cai para o reserva; 400 falha na hora')
 console.log('  ✓ resposta inválida ou erro do Google viram erro tratado')

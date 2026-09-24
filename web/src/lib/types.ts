@@ -1,4 +1,4 @@
-export type Permission = 'solicitante' | 'comprador' | 'aprovador'
+export type Permission = 'solicitante' | 'comprador' | 'aprovador' | 'cadastro' | 'fiscal'
 
 export interface User {
   id: string
@@ -6,6 +6,7 @@ export interface User {
   email: string
   role: 'admin' | 'user'
   permissions: Permission[]
+  avatar: string | null
   active: boolean
 }
 
@@ -20,6 +21,11 @@ export interface Product {
   salePrice: number
   stock: number
   minStock: number
+  typeId: string | null
+  groupId: string | null
+  typeLabel?: string | null
+  groupLabel?: string | null
+  origin: number
   active: boolean
 }
 
@@ -215,3 +221,34 @@ export interface Notice {
   link: string
   createdAt: string
 }
+
+export type FieldType = 'text' | 'int' | 'decimal' | 'bool' | 'date' | 'enum' | 'ref' | 'uf' | 'document'
+
+export interface FieldDef {
+  key: string
+  label: string
+  type: FieldType
+  required?: boolean
+  max?: number
+  pattern?: string
+  patternMessage?: string
+  upper?: boolean
+  options?: { value: string; label: string }[]
+  ref?: string
+  list?: boolean
+  default?: string | number | boolean
+  help?: string
+  span?: 1 | 2 | 3
+}
+
+export interface ResourceMeta {
+  name: string
+  module: 'cadastros' | 'fiscal'
+  title: string
+  singular: string
+  description: string
+  write: Permission[]
+  fields: FieldDef[]
+}
+
+export type CatalogRow = Record<string, unknown> & { id: string }

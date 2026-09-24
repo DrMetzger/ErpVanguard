@@ -1,5 +1,5 @@
 import { Tabs, Text, Title } from '@mantine/core'
-import { IconBuildingStore, IconChecks, IconFileInvoice, IconFileText, IconScale, IconSettings, IconShoppingBag } from '@tabler/icons-react'
+import { IconChecks, IconFileInvoice, IconFileText, IconScale, IconSettings, IconShoppingBag } from '@tabler/icons-react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useUser } from '../../lib/auth'
 import { can } from '../../lib/format'
@@ -12,7 +12,6 @@ import QuotationDetail from './QuotationDetail'
 import Quotations from './Quotations'
 import Requests from './Requests'
 import Settings from './Settings'
-import Suppliers from './Suppliers'
 
 export default function Compras() {
   const user = useUser()
@@ -26,7 +25,6 @@ export default function Compras() {
     (buyer || approver) && { path: 'pedidos', label: 'Pedidos', icon: IconShoppingBag },
     approver && { path: 'aprovacoes', label: 'Aprovações', icon: IconChecks },
     buyer && { path: 'notas', label: 'Notas (XML)', icon: IconFileInvoice },
-    buyer && { path: 'fornecedores', label: 'Fornecedores', icon: IconBuildingStore },
     user.role === 'admin' && { path: 'configuracao', label: 'Grupos e alçadas', icon: IconSettings },
   ].filter(Boolean) as { path: string; label: string; icon: typeof IconFileText }[]
 
@@ -58,7 +56,7 @@ export default function Compras() {
         <Route path="aprovacoes" element={<Approvals />} />
         <Route path="notas" element={<Invoices />} />
         <Route path="notas/:id" element={<InvoiceDetail />} />
-        <Route path="fornecedores" element={<Suppliers />} />
+        <Route path="fornecedores" element={<Navigate to="/cadastros/fornecedores" replace />} />
         <Route path="configuracao" element={<Settings />} />
         <Route path="*" element={<Navigate to={tabs[0]!.path} replace />} />
       </Routes>

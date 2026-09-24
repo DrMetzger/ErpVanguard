@@ -1,10 +1,10 @@
-import { ActionIcon, Avatar, Badge, Button, Card, Checkbox, Group, Modal, PasswordInput, SegmentedControl, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
+import { ActionIcon, Badge, Button, Card, Checkbox, Group, Modal, PasswordInput, SegmentedControl, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { IconEdit, IconPlus } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { Loading, PageHeader } from '../components/ui'
 import { api } from '../lib/api'
 import { useUser } from '../lib/auth'
-import { initials } from '../lib/format'
+import { UserAvatar } from '../components/UserAvatar'
 import { useAction, useApi } from '../lib/hooks'
 import type { Permission, User } from '../lib/types'
 
@@ -12,6 +12,8 @@ const PERMS: [Permission, string, string][] = [
   ['solicitante', 'Solicitante', 'Abre solicitações de compra'],
   ['comprador', 'Comprador', 'Cotações, pedidos, fornecedores e notas'],
   ['aprovador', 'Aprovador', 'Aprova pedidos na sua alçada'],
+  ['cadastro', 'Cadastros', 'Produtos, clientes, grupos, unidades, NCM, tabelas de preço'],
+  ['fiscal', 'Fiscal', 'CFOP, TES, tipos de operação e matriz fiscal'],
 ]
 
 export default function Users() {
@@ -32,7 +34,7 @@ export default function Users() {
                   <Table.Tr key={u.id} opacity={u.active ? 1 : 0.5}>
                     <Table.Td>
                       <Group gap="sm" wrap="nowrap">
-                        <Avatar radius="xl" color="brand" variant="light">{initials(u.name)}</Avatar>
+                        <UserAvatar name={u.name} avatar={u.avatar} />
                         <div><Text size="sm" fw={600}>{u.name}{u.id === me.id && <Text span c="dimmed" size="xs"> (você)</Text>}</Text><Text size="xs" c="dimmed">{u.email}</Text></div>
                       </Group>
                     </Table.Td>

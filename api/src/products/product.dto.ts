@@ -1,5 +1,5 @@
 import { PartialType } from '@nestjs/mapped-types'
-import { IsBoolean, IsNumber, IsOptional, IsString, Length, Matches, MaxLength, Min } from 'class-validator'
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator'
 
 export class CreateProductDto {
   @IsString()
@@ -42,6 +42,20 @@ export class CreateProductDto {
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   minStock?: number
+
+  @IsOptional()
+  @IsUUID()
+  typeId?: string | null
+
+  @IsOptional()
+  @IsUUID()
+  groupId?: string | null
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(8)
+  origin?: number
 
   @IsOptional()
   @IsBoolean()

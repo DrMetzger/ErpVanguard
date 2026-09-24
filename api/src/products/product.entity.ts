@@ -35,6 +35,16 @@ export class Product {
   @Column({ name: 'min_stock', type: 'numeric', precision: 14, scale: 4, default: 0, transformer: numeric })
   minStock: number
 
+  @Column({ name: 'type_id', type: 'uuid', nullable: true })
+  typeId: string | null
+
+  @Column({ name: 'group_id', type: 'uuid', nullable: true })
+  groupId: string | null
+
+  // Origem da mercadoria (0 = nacional, 1 = estrangeira importação direta, ...).
+  @Column({ type: 'smallint', default: 0 })
+  origin: number
+
   @Column({ default: true })
   active: boolean
 

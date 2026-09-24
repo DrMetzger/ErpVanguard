@@ -22,6 +22,25 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
   Senha inicial do administrador: `sudo grep ADMIN_PASSWORD /opt/vanguard/.env`
 - **Tarefas na VPS:** workflow *VPS* (aba Actions) com `status` e `setup`.
 
+### Menu
+
+Início · **Cadastros** · **Compras** · **Estoque** · **Fiscal** · Faturamento · Financeiro · BI — e, para
+administradores, **Usuários** e **Configurações**.
+
+- **Cadastros:** produtos (tipo SPED, grupo, unidade, NCM, origem), grupos, tipos, unidades, NCM,
+  fornecedores, clientes, tabelas de preço e amarração produto × fornecedor.
+- **Fiscal:** CFOP, tipos de operação, TES (tipos de entrada e saída: CFOP, estoque, financeiro,
+  CSTs e impostos) e matriz fiscal (qual TES usar por operação, UF, contribuinte, tipo/grupo e NCM;
+  vence a regra mais específica), com simulador.
+- **Estoque:** saldos, custo médio e movimentações.
+- **Configurações:** dados da empresa (a UF decide CFOP 5xxx × 6xxx), chave e modelos do Gemini
+  (chave criptografada no banco, prioridade sobre o secret do servidor) e IA automática no XML.
+- **Perfis:** solicitante, comprador, aprovador, cadastro e fiscal (administrador tem todos).
+- **Avatar:** estilos gratuitos do DiceBear gerados localmente (CC0 / uso comercial livre).
+
+Os cadastros simples são descritos uma vez em `api/src/catalog/resources.ts`; a API
+(`/api/catalog/:nome`) e as telas se montam a partir dessa descrição.
+
 ### Módulo de Compras
 
 Fluxo: **solicitação (SC)** → **cotação** com vários fornecedores → **análise** (mapa comparativo, menor
@@ -38,8 +57,9 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
 - **IA (Gemini):** crie o secret `GEMINI_API_KEY` no GitHub; o deploy grava no `.env` da VPS.
   Opcional: a variável `GEMINI_MODEL` (padrão `gemini-3.8-flash`).
 
-Testes: `npm test` (integração com o Gemini simulada) e `npm run test:compras` (fluxo completo contra
-uma API rodando, com `API`, `ADMIN_EMAIL` e `ADMIN_PASSWORD`).
+Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
+`node test/catalog-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`ADMIN_PASSWORD`).
 
 ### Desenvolvimento local
 

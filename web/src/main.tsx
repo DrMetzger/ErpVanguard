@@ -20,7 +20,7 @@ const colorSchemeManager = localStorageColorSchemeManager({ key: 'vanguard.color
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="dark" colorSchemeManager={colorSchemeManager}>
-      <Notifications position="top-right" />
+      <Notifications position="top-right" limit={3} autoClose={2500} />
       <BrowserRouter>
         <AuthProvider>
           <App />
