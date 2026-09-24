@@ -7,7 +7,7 @@ on:
       task:
         description: Tarefa
         type: choice
-        options: [status, setup]
+        options: [status, setup, ai-check]
         default: status
 
 concurrency:
@@ -43,3 +43,30 @@ jobs:
       - name: Setup
         if: inputs.task == 'setup'
         run: ssh "$VPS_USER@$VPS_HOST" 'sudo bash -s' < infra/vps-setup.sh
+
+      - name: AI check
+        if: inputs.task == 'ai-check'
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" 'cd /opt/vanguard/app/infra && sudo docker compose --env-file /opt/vanguard/.env exec -T api node -' <<'JS'
+          const { matchWithGemini, aiEnabled } = require('/app/dist/purchasing/gemini.js')
+          const { config } = require('/app/dist/config.js')
+          if (!aiEnabled()) { console.error('GEMINI_API_KEY não configurada no servidor'); process.exit(1) }
+          console.log('Modelo:', config.geminiModel)
+          const items = [
+            { itemNumber: 1, description: 'PARAF SEXT ZB 5X30MM', supplierCode: 'PX530', ean: null, ncm: '73181500', unit: 'UN' },
+            { itemNumber: 2, description: 'TINTA ACRIL BCA NEVE 18LT', supplierCode: 'T18', ean: null, ncm: '32091010', unit: 'LT' },
+            { itemNumber: 3, description: 'CAFE TORRADO 500G', supplierCode: 'CF5', ean: null, ncm: '09012100', unit: 'PC' },
+          ]
+          const candidates = [
+            { id: 'p1', sku: 'PAR-530', name: 'Parafuso sextavado zincado 5x30mm', ncm: '73181500', unit: 'UN' },
+            { id: 'p2', sku: 'TIN-18', name: 'Tinta acrílica branco neve 18L', ncm: '32091010', unit: 'UN' },
+            { id: 'p3', sku: 'LUV-01', name: 'Luva nitrílica caixa 100', ncm: '40151900', unit: 'CX' },
+          ]
+          matchWithGemini(items, candidates).then((r) => {
+            console.log(JSON.stringify(r, null, 2))
+            const got = Object.fromEntries(r.map((m) => [m.itemNumber, m.productId]))
+            const ok = got[1] === 'p1' && got[2] === 'p2' && !got[3]
+            console.log(ok ? 'IA OK: amarrou parafuso e tinta, e deixou o café sem produto' : 'IA respondeu, mas diferente do esperado')
+            process.exit(ok ? 0 : 1)
+          }).catch((e) => { console.error('Falha:', e.message); process.exit(1) })
+          JS
