@@ -1,0 +1,91 @@
+name: Deploy ERP
+
+on:
+  push:
+    branches: [main, claude/keen-dirac-i5mx15]
+    paths:
+      - 'api/**'
+      - 'web/**'
+      - 'infra/docker-compose.yml'
+      - '.github/workflows/deploy-app.yml'
+      - '.github/actions/vps-ssh/**'
+  workflow_dispatch:
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+env:
+  APP_DOMAIN: app.erpvanguard.com.br
+  APP_DIR: /opt/vanguard
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        uses: ./.github/actions/vps-ssh
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Upload source
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" "command -v rsync >/dev/null || sudo apt-get install -y -q rsync; sudo install -d $APP_DIR/app"
+          rsync -az --delete --rsync-path="sudo rsync" \
+            --exclude node_modules --exclude dist \
+            api web infra "$VPS_USER@$VPS_HOST:$APP_DIR/app/"
+
+      - name: Build and start
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR APP_DOMAIN=$APP_DOMAIN bash -s" <<'REMOTE'
+          set -euo pipefail
+          env_file="$APP_DIR/.env"
+
+          # Senhas geradas uma única vez, no próprio servidor. Nunca aparecem no log.
+          if [ ! -f "$env_file" ]; then
+            umask 077
+            {
+              echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+              echo "JWT_SECRET=$(openssl rand -hex 48)"
+              echo "ADMIN_EMAIL=admin@erpvanguard.com.br"
+              echo "ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-16)"
+            } > "$env_file"
+            echo "Arquivo $env_file criado com senhas novas"
+          fi
+          grep -q '^APP_DOMAIN=' "$env_file" || echo "APP_DOMAIN=$APP_DOMAIN" >> "$env_file"
+
+          cd "$APP_DIR/app/infra"
+          docker compose --env-file "$env_file" up -d --build --remove-orphans
+          docker image prune -f > /dev/null
+
+          echo "Aguardando a API..."
+          for i in $(seq 1 30); do
+            if docker compose --env-file "$env_file" exec -T api wget -qO- http://localhost:3000/api/health 2>/dev/null; then
+              echo; docker compose --env-file "$env_file" ps
+              exit 0
+            fi
+            sleep 3
+          done
+          docker compose --env-file "$env_file" logs --tail 80 api
+          exit 1
+          REMOTE
+
+      - name: Check public URL
+        run: |
+          # Na primeira vez o Caddy ainda está emitindo o certificado HTTPS.
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 "https://$APP_DOMAIN/api/health"; then
+              echo; echo "ERP no ar: https://$APP_DOMAIN"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::warning::API está rodando na VPS, mas https://$APP_DOMAIN ainda não respondeu (DNS ou certificado)"
+          ssh "$VPS_USER@$VPS_HOST" "cd $APP_DIR/app/infra && sudo docker compose --env-file $APP_DIR/.env logs --tail 40 web" || true

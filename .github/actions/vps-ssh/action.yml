@@ -1,0 +1,50 @@
+name: VPS SSH
+description: Configura a chave SSH da VPS (secret VPS_SSH_KEY) no runner
+inputs:
+  host:
+    required: true
+  key:
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VPS_HOST: ${{ inputs.host }}
+        VPS_SSH_KEY: ${{ inputs.key }}
+      run: |
+        if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
+          echo "::error::Configure os secrets VPS_HOST e VPS_SSH_KEY em Settings > Secrets and variables > Actions"
+          exit 1
+        fi
+        install -d -m 700 ~/.ssh
+        # Keys pasted from a Windows terminal often arrive with CRLF, trailing
+        # spaces or all on one line; rebuild the standard PEM layout.
+        python3 - <<'PY'
+        import base64, os, re
+        raw = os.environ["VPS_SSH_KEY"].replace("\r", "")
+        if "-----BEGIN" not in raw:
+            # Also accept the key as a single base64 line (base64 -w0 ~/.ssh/github_actions).
+            try:
+                raw = base64.b64decode(re.sub(r"\s+", "", raw), validate=True).decode()
+            except Exception:
+                pass
+        if raw.lstrip().startswith("ssh-"):
+            raise SystemExit("::error::VPS_SSH_KEY contém a chave PÚBLICA (ssh-ed25519 ...). Use a chave privada")
+        m = re.search(r"-----BEGIN ([A-Z ]+)-----(.*?)-----END \1-----", raw, re.S)
+        if not m:
+            raise SystemExit("::error::VPS_SSH_KEY não contém as linhas BEGIN/END da chave privada")
+        body = re.sub(r"\s+", "", m.group(2))
+        lines = [body[i:i + 70] for i in range(0, len(body), 70)]
+        key = f"-----BEGIN {m.group(1)}-----\n" + "\n".join(lines) + f"\n-----END {m.group(1)}-----\n"
+        path = os.path.expanduser("~/.ssh/id_ed25519")
+        with open(path, "w") as f:
+            f.write(key)
+        os.chmod(path, 0o600)
+        PY
+        if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null; then
+          echo "::error::VPS_SSH_KEY está incompleta ou corrompida. Copie de novo o bloco inteiro de ~/.ssh/github_actions"
+          exit 1
+        fi
+        echo "Chave carregada: $(ssh-keygen -l -f ~/.ssh/id_ed25519)"
+        ssh-keyscan -T 15 "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null

@@ -1,0 +1,52 @@
+# Sobe o ERP Vanguard: PostgreSQL + API + web (Caddy com HTTPS).
+# Variáveis vêm de /opt/vanguard/.env (gerado no primeiro deploy).
+name: vanguard
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vanguard
+      POSTGRES_USER: vanguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vanguard -d vanguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ../api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://vanguard:${POSTGRES_PASSWORD}@db:5432/vanguard
+      JWT_SECRET: ${JWT_SECRET:?}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@erpvanguard.com.br}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TZ: America/Sao_Paulo
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ../web
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
