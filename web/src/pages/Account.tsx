@@ -1,7 +1,7 @@
 import { Badge, Button, Card, ColorSwatch, Group, PasswordInput, SegmentedControl, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { IconRefresh } from '@tabler/icons-react'
 import { ANIMAL_NAMES } from '../components/avatars/vanguard'
-import { AVATAR_STYLES, SKIN_TONES, UserAvatar, type AvatarStyle } from '../components/UserAvatar'
+import { AVATAR_STYLES, GENDERS, SKIN_TONES, UserAvatar, type AvatarStyle } from '../components/UserAvatar'
 import { useState, type FormEvent } from 'react'
 import { api } from '../lib/api'
 import { useAuth, useUser } from '../lib/auth'
@@ -52,18 +52,19 @@ export default function Account() {
   )
 }
 
-// Escolha do avatar: estilo, tom de pele (Pessoas) e 18 variações (dá para sortear outras).
+// Escolha do avatar: estilo; em Pessoas, homem/mulher, tom de pele e 30 variações (dá para sortear outras).
 function AvatarPicker() {
   const user = useUser()
   const { refresh } = useAuth()
   const [style, setStyle] = useState<AvatarStyle>(((user.avatar?.split(':')[0] as AvatarStyle) in AVATAR_STYLES ? user.avatar!.split(':')[0] : 'pessoas') as AvatarStyle)
   const [round, setRound] = useState(0)
-  const [tone, setTone] = useState(Number(user.avatar?.match(/^pessoas:t(\d)-/)?.[1] ?? 0))
+  const [tone, setTone] = useState(user.avatar?.match(/^pessoas:t(\d)-/)?.[1] ?? 'x')
+  const [gender, setGender] = useState(user.avatar?.match(/^pessoas:t[\dx]-g([mf])-/)?.[1] ?? 'm')
   const { busy, run } = useAction()
-  // Bichos: um de cada; Pessoas: 18 variações no tom de pele escolhido.
+  // Bichos: um de cada; Pessoas: 30 variações do tipo e tom de pele escolhidos.
   const seeds = style === 'bichos'
     ? ANIMAL_NAMES.map((a) => `${a}-${user.id.slice(0, 6)}${round}`)
-    : Array.from({ length: 18 }, (_, i) => `t${tone}-${user.id.slice(0, 8)}-${round}-${i}`)
+    : Array.from({ length: 30 }, (_, i) => `t${tone}-g${gender}-${user.id.slice(0, 8)}-${round}-${i}`)
   const choose = (avatar: string | null) => run(async () => { await api<User>('/auth/me', { method: 'PATCH', body: { avatar } }); await refresh() }, 'Avatar atualizado')
 
   return (
@@ -77,14 +78,18 @@ function AvatarPicker() {
       </Group>
       <SegmentedControl size="xs" value={style} onChange={(v) => setStyle(v as AvatarStyle)} data={Object.entries(AVATAR_STYLES).map(([value, s]) => ({ value, label: s.label }))} style={{ overflowX: 'auto' }} />
       {style === 'pessoas' && (
-        <Group gap="xs">
-          <Text size="xs" c="dimmed">Tom de pele</Text>
-          {SKIN_TONES.map((t, i) => (
-            <Tooltip key={t.value} label={t.label}>
-              <ColorSwatch component="button" type="button" color={`#${t.value}`} size={22} onClick={() => setTone(i)} aria-label={`Tom de pele ${t.label}`}
-                style={{ cursor: 'pointer', outline: tone === i ? '2px solid var(--mantine-primary-color-filled)' : undefined, outlineOffset: 2 }} />
-            </Tooltip>
-          ))}
+        <Group gap="md" justify="space-between">
+          <SegmentedControl size="xs" value={gender} onChange={setGender} data={GENDERS.map((g) => ({ ...g }))} aria-label="Homem ou mulher" />
+          <Group gap="xs">
+            <Text size="xs" c="dimmed">Tom de pele</Text>
+            <Button size="compact-xs" variant={tone === 'x' ? 'light' : 'subtle'} onClick={() => setTone('x')}>Todos</Button>
+            {SKIN_TONES.map((t, i) => (
+              <Tooltip key={t.value} label={t.label}>
+                <ColorSwatch component="button" type="button" color={`#${t.value}`} size={22} onClick={() => setTone(String(i))} aria-label={`Tom de pele ${t.label}`}
+                  style={{ cursor: 'pointer', outline: tone === String(i) ? '2px solid var(--mantine-primary-color-filled)' : undefined, outlineOffset: 2 }} />
+              </Tooltip>
+            ))}
+          </Group>
         </Group>
       )}
       <SimpleGrid cols={6} spacing="xs">

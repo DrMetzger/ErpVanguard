@@ -13,12 +13,18 @@ export const SKIN_TONES = [
   { value: 'ae5d29', label: 'Morena escura' }, { value: '614335', label: 'Escura' },
 ] as const
 
+const MEN_HAIR = ['shortCurly', 'shortFlat', 'shortRound', 'shortWaved', 'sides', 'theCaesar', 'theCaesarAndSidePart', 'shavedSides', 'dreads01', 'frizzle', 'shaggy', 'hat', 'turban'] as const
+const WOMEN_HAIR = ['bob', 'bun', 'curly', 'curvy', 'bigHair', 'frida', 'fro', 'froBand', 'longButNotTooLong', 'miaWallace', 'straight01', 'straight02', 'straightAndStrand', 'dreads', 'hijab'] as const
+export const GENDERS = [{ value: 'm', label: 'Homem' }, { value: 'f', label: 'Mulher' }] as const
+
 // "Pessoas" (Avataaars, uso comercial livre) só com expressões alegres e estampas neutras.
-// A semente "t2-..." fixa o tom de pele escolhido (índice em SKIN_TONES).
+// A semente "t2-gf-..." fixa o tom de pele (índice em SKIN_TONES; "tx" = qualquer) e homem/mulher.
 const people = (seed: string) => {
   const tone = SKIN_TONES[Number(seed.match(/^t(\d)-/)?.[1] ?? -1)]
+  const gender = seed.match(/^t[\dx]-g([mf])-/)?.[1]
   return createAvatar(avataaars, {
     seed,
+    ...(gender && { top: [...(gender === 'm' ? MEN_HAIR : WOMEN_HAIR)], topProbability: 100 }),
     backgroundColor: ['ff5f6d', '2193b0', '8e2de2', 'f7971e', '11998e', 'fc466b', '4776e6', 'ee0979'],
     backgroundType: ['gradientLinear'],
     eyes: ['default', 'happy', 'wink', 'squint'],
@@ -29,7 +35,7 @@ const people = (seed: string) => {
     accessories: ['prescription01', 'prescription02', 'round', 'wayfarers'],
     clothingGraphic: ['bear', 'deer', 'diamond', 'pizza', 'hola', 'cumbia'],
     accessoriesProbability: 20,
-    facialHairProbability: 25,
+    facialHairProbability: gender === 'f' ? 0 : 30,
   }).toDataUri()
 }
 
