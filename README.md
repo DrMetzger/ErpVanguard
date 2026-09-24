@@ -41,8 +41,8 @@ Faturamento · Financeiro · BI — e, para administradores, **Usuários** e **C
 - **Configurações:** chave e modelos do Gemini (chave criptografada no banco, prioridade sobre o secret do
   servidor) e IA automática no XML.
 - **Perfis:** solicitante, comprador, aprovador, cadastro e fiscal (administrador tem todos).
-- **Avatar:** "Perfis" e "Bichos" são desenhos próprios do Vanguard (`web/src/components/avatars`);
-  "Pessoas" usa o Avataaars (uso comercial livre) só com expressões alegres.
+- **Avatar:** "Pessoas" (Avataaars, uso comercial livre) com tom de pele escolhido pela própria pessoa e só
+  expressões alegres; "Bichos" são desenhos próprios do Vanguard (`web/src/components/avatars`).
 
 Endereços antigos (`/fiscal/...`, `/cadastros/<aba>`, `/compras/fornecedores`) redirecionam para os novos.
 

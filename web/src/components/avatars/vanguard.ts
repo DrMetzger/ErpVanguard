@@ -1,5 +1,5 @@
 // Avatares próprios do ERP Vanguard (desenho nosso, sem licença de terceiros).
-// Sempre alegres: só olhos e bocas felizes. Gerados a partir de uma "semente" (sempre o mesmo desenho).
+// Sempre alegres. Gerados a partir de uma "semente" (sempre o mesmo desenho).
 
 function rng(seed: string) {
   let h = 2166136261
@@ -21,31 +21,6 @@ const TILES = [
 
 const tile = (id: string, [a, b]: readonly [string, string], body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="100" height="100" fill="url(#${id})"/>${body}</svg>`
-
-// ---- Perfis: carinha simples e grande, como os ícones de perfil da Netflix
-const EYES = {
-  dots: '<circle cx="36" cy="42" r="6" fill="#fff"/><circle cx="64" cy="42" r="6" fill="#fff"/>',
-  happy: '<path d="M29 44q7-9 14 0M57 44q7-9 14 0" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>',
-  wink: '<circle cx="36" cy="42" r="6" fill="#fff"/><path d="M57 43h14" stroke="#fff" stroke-width="5" stroke-linecap="round"/>',
-  tall: '<rect x="31" y="32" width="10" height="18" rx="5" fill="#fff"/><rect x="59" y="32" width="10" height="18" rx="5" fill="#fff"/>',
-  shades: '<path d="M24 37h52v3c0 9-6 13-12 13s-10-4-11-10h-6c-1 6-5 10-11 10s-12-4-12-13z" fill="#111"/><path d="M30 41h8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".6"/>',
-  stars: '<path d="M36 34l2.6 5.4 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.8zM64 34l2.6 5.4 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z" fill="#fff"/>',
-} as const
-const MOUTHS = {
-  smile: '<path d="M33 62q17 16 34 0" stroke="#fff" stroke-width="5.5" fill="none" stroke-linecap="round"/>',
-  grin: '<path d="M31 60h38q-2 18-19 18T31 60z" fill="#fff"/>',
-  small: '<path d="M41 64q9 8 18 0" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>',
-  open: '<path d="M36 60h28q0 16-14 16T36 60z" fill="#fff"/><path d="M42 70q8 5 16 0" fill="#ff8fa3"/>',
-  wide: '<path d="M27 60q23 22 46 0" stroke="#fff" stroke-width="5.5" fill="none" stroke-linecap="round"/>',
-} as const
-
-export function profileSvg(seed: string) {
-  const r = rng(seed)
-  const eyes = pick(r, Object.keys(EYES) as (keyof typeof EYES)[])
-  const mouth = pick(r, Object.keys(MOUTHS) as (keyof typeof MOUTHS)[])
-  const cheeks = r() < 0.45 ? '<circle cx="24" cy="58" r="6" fill="#fff" opacity=".25"/><circle cx="76" cy="58" r="6" fill="#fff" opacity=".25"/>' : ''
-  return tile(`g${Math.floor(r() * 1e9)}`, pick(r, TILES), EYES[eyes] + MOUTHS[mouth] + cheeks)
-}
 
 // ---- Bichos: carinhas de animais em formas simples
 const eyes = (y = 50, gap = 14, r = 4.2) => `<circle cx="${50 - gap}" cy="${y}" r="${r}" fill="#1f1f2e"/><circle cx="${50 + gap}" cy="${y}" r="${r}" fill="#1f1f2e"/><circle cx="${51.5 - gap}" cy="${y - 1.5}" r="1.4" fill="#fff"/><circle cx="${51.5 + gap}" cy="${y - 1.5}" r="1.4" fill="#fff"/>`

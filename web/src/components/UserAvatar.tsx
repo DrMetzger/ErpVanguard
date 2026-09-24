@@ -3,31 +3,39 @@ import { createAvatar } from '@dicebear/core'
 import { useMemo } from 'react'
 import { initials } from '../lib/format'
 import { avataaars } from './avatarStyles'
-import { animalSvg, profileSvg } from './avatars/vanguard'
+import { animalSvg } from './avatars/vanguard'
 
 const svgUri = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 
-// "Pessoas" (Avataaars, uso comercial livre) só com expressões alegres, cores naturais e estampas neutras.
-const people = (seed: string) =>
-  createAvatar(avataaars, {
+// Tons de pele que a pessoa escolhe na tela (da mais clara para a mais escura).
+export const SKIN_TONES = [
+  { value: 'ffdbb4', label: 'Clara' }, { value: 'edb98a', label: 'Média' }, { value: 'd08b5b', label: 'Morena' },
+  { value: 'ae5d29', label: 'Morena escura' }, { value: '614335', label: 'Escura' },
+] as const
+
+// "Pessoas" (Avataaars, uso comercial livre) só com expressões alegres e estampas neutras.
+// A semente "t2-..." fixa o tom de pele escolhido (índice em SKIN_TONES).
+const people = (seed: string) => {
+  const tone = SKIN_TONES[Number(seed.match(/^t(\d)-/)?.[1] ?? -1)]
+  return createAvatar(avataaars, {
     seed,
     backgroundColor: ['ff5f6d', '2193b0', '8e2de2', 'f7971e', '11998e', 'fc466b', '4776e6', 'ee0979'],
     backgroundType: ['gradientLinear'],
     eyes: ['default', 'happy', 'wink', 'squint'],
     eyebrows: ['default', 'defaultNatural', 'raisedExcited', 'raisedExcitedNatural'],
     mouth: ['smile', 'default', 'twinkle'],
-    skinColor: ['614335', 'd08b5b', 'ae5d29', 'edb98a', 'ffdbb4'],
+    skinColor: tone ? [tone.value] : SKIN_TONES.map((t) => t.value),
     hairColor: ['a55728', '2c1b18', 'b58143', 'd6b370', '724133', '4a312c', 'ecdcbf', 'c93305', 'e8e1e1'],
     accessories: ['prescription01', 'prescription02', 'round', 'wayfarers'],
     clothingGraphic: ['bear', 'deer', 'diamond', 'pizza', 'hola', 'cumbia'],
     accessoriesProbability: 20,
     facialHairProbability: 25,
   }).toDataUri()
+}
 
 export const AVATAR_STYLES = {
-  perfis: { label: 'Perfis', render: (seed: string) => svgUri(profileSvg(seed)) },
-  bichos: { label: 'Bichos', render: (seed: string) => svgUri(animalSvg(seed)) },
   pessoas: { label: 'Pessoas', render: people },
+  bichos: { label: 'Bichos', render: (seed: string) => svgUri(animalSvg(seed)) },
 } as const
 export type AvatarStyle = keyof typeof AVATAR_STYLES
 

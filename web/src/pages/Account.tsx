@@ -1,7 +1,7 @@
-import { Badge, Button, Card, Group, PasswordInput, SegmentedControl, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { Badge, Button, Card, ColorSwatch, Group, PasswordInput, SegmentedControl, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { IconRefresh } from '@tabler/icons-react'
 import { ANIMAL_NAMES } from '../components/avatars/vanguard'
-import { AVATAR_STYLES, UserAvatar, type AvatarStyle } from '../components/UserAvatar'
+import { AVATAR_STYLES, SKIN_TONES, UserAvatar, type AvatarStyle } from '../components/UserAvatar'
 import { useState, type FormEvent } from 'react'
 import { api } from '../lib/api'
 import { useAuth, useUser } from '../lib/auth'
@@ -52,17 +52,18 @@ export default function Account() {
   )
 }
 
-// Escolha do avatar: estilo + 12 variações (dá para sortear outras).
+// Escolha do avatar: estilo, tom de pele (Pessoas) e 18 variações (dá para sortear outras).
 function AvatarPicker() {
   const user = useUser()
   const { refresh } = useAuth()
-  const [style, setStyle] = useState<AvatarStyle>(((user.avatar?.split(':')[0] as AvatarStyle) in AVATAR_STYLES ? user.avatar!.split(':')[0] : 'perfis') as AvatarStyle)
+  const [style, setStyle] = useState<AvatarStyle>(((user.avatar?.split(':')[0] as AvatarStyle) in AVATAR_STYLES ? user.avatar!.split(':')[0] : 'pessoas') as AvatarStyle)
   const [round, setRound] = useState(0)
+  const [tone, setTone] = useState(Number(user.avatar?.match(/^pessoas:t(\d)-/)?.[1] ?? 0))
   const { busy, run } = useAction()
-  // Bichos: um de cada; os outros estilos, 12 variações.
+  // Bichos: um de cada; Pessoas: 18 variações no tom de pele escolhido.
   const seeds = style === 'bichos'
     ? ANIMAL_NAMES.map((a) => `${a}-${user.id.slice(0, 6)}${round}`)
-    : Array.from({ length: 12 }, (_, i) => `${user.id.slice(0, 8)}-${round}-${i}`)
+    : Array.from({ length: 18 }, (_, i) => `t${tone}-${user.id.slice(0, 8)}-${round}-${i}`)
   const choose = (avatar: string | null) => run(async () => { await api<User>('/auth/me', { method: 'PATCH', body: { avatar } }); await refresh() }, 'Avatar atualizado')
 
   return (
@@ -75,6 +76,17 @@ function AvatarPicker() {
         </Group>
       </Group>
       <SegmentedControl size="xs" value={style} onChange={(v) => setStyle(v as AvatarStyle)} data={Object.entries(AVATAR_STYLES).map(([value, s]) => ({ value, label: s.label }))} style={{ overflowX: 'auto' }} />
+      {style === 'pessoas' && (
+        <Group gap="xs">
+          <Text size="xs" c="dimmed">Tom de pele</Text>
+          {SKIN_TONES.map((t, i) => (
+            <Tooltip key={t.value} label={t.label}>
+              <ColorSwatch component="button" type="button" color={`#${t.value}`} size={22} onClick={() => setTone(i)} aria-label={`Tom de pele ${t.label}`}
+                style={{ cursor: 'pointer', outline: tone === i ? '2px solid var(--mantine-primary-color-filled)' : undefined, outlineOffset: 2 }} />
+            </Tooltip>
+          ))}
+        </Group>
+      )}
       <SimpleGrid cols={6} spacing="xs">
         {seeds.map((seed) => {
           const value = `${style}:${seed}`
@@ -85,7 +97,7 @@ function AvatarPicker() {
           )
         })}
       </SimpleGrid>
-      <Text size="xs" c="dimmed">Perfis e Bichos são desenhos do próprio Vanguard; Pessoas usa o Avataaars (livre para uso comercial). Tudo gerado aqui mesmo, sem enviar seus dados para fora.</Text>
+      <Text size="xs" c="dimmed">Pessoas usa o Avataaars (livre para uso comercial); Bichos são desenhos do próprio Vanguard. Tudo gerado aqui mesmo, sem enviar seus dados para fora.</Text>
     </Stack>
   )
 }
