@@ -1,0 +1,77 @@
+name: Android
+
+# Gera o app Android. Sempre produz um APK de teste; com os secrets da chave de
+# upload configurados, gera também o AAB assinado para a Play Store.
+on:
+  push:
+    branches: [main, claude/keen-dirac-i5mx15]
+    paths:
+      - 'mobile/**'
+      - 'web/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 0.1.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build web and sync Capacitor
+        run: |
+          npm ci --prefix web
+          npm ci --prefix mobile
+          cd mobile && npm run sync
+
+      - name: Debug APK
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Signed release (Play Store)
+        working-directory: mobile/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "Sem a chave de upload (ANDROID_KEYSTORE_BASE64): gerando só o APK de teste."
+            exit 0
+          fi
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/upload.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$ANDROID_KEYSTORE_PATH"
+          ./gradlew --no-daemon bundleRelease
+          rm -f "$ANDROID_KEYSTORE_PATH"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erp-vanguard-${{ env.VERSION_NAME }}-teste-apk
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('mobile/android/app/build/outputs/bundle/release/*.aab') != ''
+        with:
+          name: erp-vanguard-${{ env.VERSION_NAME }}-playstore-aab
+          path: mobile/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 90

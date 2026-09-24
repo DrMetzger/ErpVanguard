@@ -11,4 +11,6 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '12h',
   adminEmail: process.env.ADMIN_EMAIL ?? 'admin@erpvanguard.com.br',
   adminPassword: process.env.ADMIN_PASSWORD,
+  // Origens do app Android (Capacitor). O site usa o mesmo domínio e não precisa de CORS.
+  corsOrigins: (process.env.CORS_ORIGINS ?? 'https://localhost,capacitor://localhost').split(',').map((o) => o.trim()),
 }

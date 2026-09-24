@@ -1,4 +1,6 @@
 const TOKEN_KEY = 'vanguard.token'
+// No site fica vazio (mesmo domínio); no app Android aponta para o servidor.
+const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
 export const setToken = (token) =>
@@ -17,7 +19,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_URL}/api${path}`, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),

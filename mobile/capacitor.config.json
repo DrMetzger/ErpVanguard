@@ -1,0 +1,21 @@
+{
+  "appId": "br.com.erpvanguard.app",
+  "appName": "ERP Vanguard",
+  "webDir": "www",
+  "backgroundColor": "#0b1120",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#0b1120",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0f172a",
+      "overlaysWebView": false
+    }
+  }
+}
