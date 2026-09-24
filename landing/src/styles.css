@@ -146,6 +146,12 @@ h3 { font-size: 1.15rem; }
   transition: border-color 0.2s, transform 0.2s;
 }
 .module-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+.module-featured {
+  grid-column: span 2;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(6, 182, 212, 0.08)), var(--surface);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+.module-featured ul { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .module-icon {
   width: 48px; height: 48px; display: grid; place-items: center;
   border-radius: 12px; margin-bottom: 18px;
@@ -252,6 +258,8 @@ h3 { font-size: 1.15rem; }
   .hero { padding: 48px 0 64px; }
   .section { padding: 64px 0; }
   .modules-grid, .integrations-grid, .footer-inner { grid-template-columns: 1fr; }
+  .module-featured { grid-column: auto; }
+  .module-featured ul { grid-template-columns: 1fr; }
   .mock-body { grid-template-columns: 1fr; }
   .mock-sidebar { display: none; }
 }

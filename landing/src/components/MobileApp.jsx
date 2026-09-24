@@ -1,11 +1,11 @@
 import Icon from './Icon.jsx'
 
 const items = [
-  'Bater o ponto com geolocalização',
   'Consultar estoque e preços em tempo real',
   'Tirar pedidos de venda em campo',
   'Aprovar compras e pagamentos',
   'Acompanhar vendas dos marketplaces',
+  'Ver os painéis de BI de qualquer lugar',
 ]
 
 export default function MobileApp() {
@@ -18,11 +18,11 @@ export default function MobileApp() {
               <img src="/logo.svg" alt="" width="22" height="22" /> Vanguard
             </div>
             <div className="phone-punch">
-              <small>Registrar ponto</small>
-              <b>08:02</b>
-              <span className="phone-btn">Bater ponto</span>
+              <small>Faturamento hoje</small>
+              <b>R$ 18,4 mil</b>
+              <span className="phone-btn">Ver painel</span>
             </div>
-            <div className="phone-row"><span>Vendas hoje</span><b>R$ 18.420</b></div>
+            <div className="phone-row"><span>Margem média</span><b>32%</b></div>
             <div className="phone-row"><span>Pedidos ML</span><b>37</b></div>
             <div className="phone-row"><span>A aprovar</span><b>5</b></div>
           </div>

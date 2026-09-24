@@ -13,7 +13,7 @@ export default function Modules() {
 
         <div className="modules-grid">
           {modules.map((m) => (
-            <article key={m.id} id={m.id} className="module-card">
+            <article key={m.id} id={m.id} className={`module-card${m.featured ? ' module-featured' : ''}`}>
               <div className="module-icon"><Icon name={m.icon} /></div>
               <h3>{m.title}</h3>
               <p>{m.description}</p>

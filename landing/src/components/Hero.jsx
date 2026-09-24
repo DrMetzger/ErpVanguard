@@ -11,8 +11,8 @@ export default function Hero() {
             Sua empresa inteira em <span className="gradient-text">um só sistema</span>
           </h1>
           <p className="lead">
-            Do estoque à contabilidade, da folha ao ponto eletrônico. Tudo integrado de fábrica
-            ao WhatsApp, ao Mercado Livre, à Shopee e ao Magalu.
+            Compras, estoque, faturamento, financeiro e BI avançado em um só lugar. Tudo integrado
+            de fábrica ao WhatsApp, ao Mercado Livre, à Shopee e ao Magalu.
           </p>
           <div className="hero-actions">
             <a href="#contato" className="btn btn-primary">

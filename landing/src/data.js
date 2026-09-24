@@ -3,13 +3,6 @@ export const CONTACT_EMAIL = 'contato@erpvanguard.com.br'
 
 export const modules = [
   {
-    id: 'ativo-fixo',
-    icon: 'building',
-    title: 'Ativo Fixo',
-    description: 'Controle patrimonial completo, com depreciação automática, transferências, baixas e inventário por plaqueta.',
-    features: ['Depreciação fiscal e societária', 'CIAP integrado', 'Inventário com QR Code'],
-  },
-  {
     id: 'compras',
     icon: 'cart',
     title: 'Compras',
@@ -17,9 +10,9 @@ export const modules = [
     features: ['Cotação entre fornecedores', 'Aprovação por alçada', 'Entrada por XML da NF-e'],
   },
   {
-    id: 'estoque-custos',
+    id: 'estoque',
     icon: 'box',
-    title: 'Estoque / Custos',
+    title: 'Estoque',
     description: 'Estoque multidepósito com lote, validade e grade, além de custo médio, reposição e curva ABC.',
     features: ['Multidepósito e endereçamento', 'Custo médio e reposição', 'Lote, validade e grade'],
   },
@@ -38,32 +31,12 @@ export const modules = [
     features: ['Boleto e PIX integrados', 'Conciliação via OFX e API', 'Fluxo de caixa e DRE gerencial'],
   },
   {
-    id: 'fiscal',
-    icon: 'shield',
-    title: 'Fiscal',
-    description: 'Apuração de ICMS, IPI, PIS e COFINS, preparada para a Reforma Tributária (IBS e CBS), com geração do SPED.',
-    features: ['SPED Fiscal e Contribuições', 'Pronto para IBS e CBS', 'Regras tributárias por NCM'],
-  },
-  {
-    id: 'contabilidade',
-    icon: 'book',
-    title: 'Contabilidade',
-    description: 'Lançamentos automáticos a partir dos módulos, plano de contas, balancete, DRE, balanço e ECD/ECF.',
-    features: ['Contabilização automática', 'Balancete, DRE e balanço', 'ECD e ECF'],
-  },
-  {
-    id: 'gestao-pessoal',
-    icon: 'users',
-    title: 'Gestão de Pessoal',
-    description: 'Folha de pagamento, férias, 13º, rescisões, benefícios e envio de eventos ao eSocial.',
-    features: ['Folha, férias e rescisões', 'eSocial e FGTS Digital', 'Portal do colaborador'],
-  },
-  {
-    id: 'ponto-eletronico',
-    icon: 'clock',
-    title: 'Ponto Eletrônico',
-    description: 'Registro de ponto pelo app com geolocalização, banco de horas e integração direta com a folha.',
-    features: ['Marcação pelo app Android', 'Geolocalização e selfie', 'Banco de horas (Portaria 671)'],
+    id: 'bi',
+    icon: 'chart',
+    title: 'BI Avançado',
+    featured: true,
+    description: 'Painéis prontos e personalizáveis com os dados de compras, estoque, vendas e financeiro em tempo real, para decidir com números e não com achismo.',
+    features: ['Dashboards em tempo real', 'Margem por produto, canal e marketplace', 'Metas, rankings e alertas', 'Exportação para Excel e PDF'],
   },
 ]
 
