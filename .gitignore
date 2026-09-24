@@ -6,3 +6,4 @@
 dist/
 erpvanguard-site.zip
 node_modules/
+*.tsbuildinfo

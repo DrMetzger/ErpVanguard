@@ -74,7 +74,7 @@ export class CatalogController {
     this.canWrite(me, def)
     const values = this.values(def, body, true)
     const cols = Object.keys(values)
-    const row = await this.run(() =>
+    const row = await this.run(def, () =>
       one(this.db, `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, Object.values(values)),
     )
     return this.get(def, row!.id)
@@ -89,7 +89,7 @@ export class CatalogController {
     const values = this.values(def, body, false, current)
     const cols = Object.keys(values)
     if (cols.length) {
-      await this.run(() => this.db.query(`UPDATE ${def.table} SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...Object.values(values)]))
+      await this.run(def, () => this.db.query(`UPDATE ${def.table} SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...Object.values(values)]))
     }
     return this.get(def, id)
   }
@@ -115,7 +115,7 @@ export class CatalogController {
   }
 
   private canWrite(me: User, def: ResourceDef) {
-    if (!isAdmin(me) && !def.write.some((p) => me.permissions.includes(p))) {
+    if (!isAdmin(me) && !def.write.some((p) => me.permissions.includes(p))) {  // write vazio = só administrador
       throw new ForbiddenException(`Seu usuário não pode alterar ${def.title.toLowerCase()}`)
     }
   }
@@ -203,10 +203,12 @@ export class CatalogController {
     }
   }
 
-  private async run<T>(fn: () => Promise<T>) {
+  private async run<T>(def: ResourceDef, fn: () => Promise<T>) {
     try {
       return await fn()
     } catch (error: any) {
+      const custom = error?.constraint && def.constraints?.[error.constraint]
+      if (custom) throw new ConflictException(custom)
       if (error?.code === '23505') throw new ConflictException('Já existe um registro com este código')
       if (error?.code === '23503') throw new BadRequestException('Registro relacionado não encontrado')
       throw error

@@ -17,6 +17,7 @@ class PriceItemsDto {
 }
 class ResolveDto {
   @IsUUID() operationTypeId: string
+  @IsOptional() @IsUUID() companyId?: string
   @IsOptional() @IsString() uf?: string
   @IsOptional() @IsIn(['1', '2', '9']) taxpayer?: string
   @IsOptional() @IsUUID() productId?: string
@@ -69,7 +70,14 @@ export class ExtrasController {
   // ---- Matriz fiscal: qual TES e CFOP usar numa operação
   @Post('fiscal/resolve')
   async resolve(@Body() dto: ResolveDto) {
-    const company = await this.settings.company()
+    // UF de origem: filial informada, senão a matriz (ou a primeira empresa), senão Configurações.
+    const branch = await one(
+      this.db,
+      `SELECT code, uf FROM companies WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY is_head DESC, code LIMIT 1`,
+      [dto.companyId ?? null],
+    )
+    if (dto.companyId && !branch) throw new NotFoundException('Empresa/filial não encontrada')
+    const companyUf = branch?.uf ?? (await this.settings.company()).uf
     const product = dto.productId
       ? await one(this.db, `SELECT type_id, group_id, ncm FROM products WHERE id = $1`, [dto.productId])
       : undefined
@@ -91,7 +99,7 @@ export class ExtrasController {
       ['uf', 'taxpayer', 'product_type_id', 'product_group_id'].filter((k) => r[k] !== null).length * 10 + (r.ncm_prefix?.length ?? 0)
     const best = rules.sort((a: any, b: any) => score(b) - score(a))[0]
     if (!best) throw new NotFoundException('Nenhuma regra da matriz fiscal atende esta operação')
-    const interstate = !!dto.uf && dto.uf.toUpperCase() !== company.uf
+    const interstate = !!dto.uf && dto.uf.toUpperCase() !== companyUf
     return {
       tes: { id: best.tes_id, code: best.tes_code, description: best.tes_description },
       cfop: interstate && best.cfop_interstate ? best.cfop_interstate : best.cfop_internal,
@@ -99,6 +107,7 @@ export class ExtrasController {
       updatesStock: best.updates_stock,
       generatesFinancial: best.generates_financial,
       rule: best.notes,
+      companyUf,
     }
   }
 }

@@ -56,7 +56,7 @@ export default function Compras() {
         <Route path="aprovacoes" element={<Approvals />} />
         <Route path="notas" element={<Invoices />} />
         <Route path="notas/:id" element={<InvoiceDetail />} />
-        <Route path="fornecedores" element={<Navigate to="/cadastros/fornecedores" replace />} />
+        <Route path="fornecedores" element={<Navigate to="/cadastros/parceiros/fornecedores" replace />} />
         <Route path="configuracao" element={<Settings />} />
         <Route path="*" element={<Navigate to={tabs[0]!.path} replace />} />
       </Routes>

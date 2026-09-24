@@ -1,32 +1,46 @@
 import { Avatar, type AvatarProps } from '@mantine/core'
 import { createAvatar } from '@dicebear/core'
-import { avataaars, bottts, lorelei, notionists, openPeeps, pixelArt, thumbs } from './avatarStyles'
 import { useMemo } from 'react'
 import { initials } from '../lib/format'
+import { avataaars } from './avatarStyles'
+import { animalSvg, profileSvg } from './avatars/vanguard'
 
-// Estilos gratuitos do DiceBear (uso comercial sem atribuição), gerados localmente.
+const svgUri = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+
+// "Pessoas" (Avataaars, uso comercial livre) só com expressões alegres, cores naturais e estampas neutras.
+const people = (seed: string) =>
+  createAvatar(avataaars, {
+    seed,
+    backgroundColor: ['ff5f6d', '2193b0', '8e2de2', 'f7971e', '11998e', 'fc466b', '4776e6', 'ee0979'],
+    backgroundType: ['gradientLinear'],
+    eyes: ['default', 'happy', 'wink', 'squint'],
+    eyebrows: ['default', 'defaultNatural', 'raisedExcited', 'raisedExcitedNatural'],
+    mouth: ['smile', 'default', 'twinkle'],
+    skinColor: ['614335', 'd08b5b', 'ae5d29', 'edb98a', 'ffdbb4'],
+    hairColor: ['a55728', '2c1b18', 'b58143', 'd6b370', '724133', '4a312c', 'ecdcbf', 'c93305', 'e8e1e1'],
+    accessories: ['prescription01', 'prescription02', 'round', 'wayfarers'],
+    clothingGraphic: ['bear', 'deer', 'diamond', 'pizza', 'hola', 'cumbia'],
+    accessoriesProbability: 20,
+    facialHairProbability: 25,
+  }).toDataUri()
+
 export const AVATAR_STYLES = {
-  notionists: { label: 'Notion', style: notionists },
-  lorelei: { label: 'Lorelei', style: lorelei },
-  'open-peeps': { label: 'Open Peeps', style: openPeeps },
-  avataaars: { label: 'Avataaars', style: avataaars },
-  thumbs: { label: 'Thumbs', style: thumbs },
-  bottts: { label: 'Robôs', style: bottts },
-  'pixel-art': { label: 'Pixel art', style: pixelArt },
+  perfis: { label: 'Perfis', render: (seed: string) => svgUri(profileSvg(seed)) },
+  bichos: { label: 'Bichos', render: (seed: string) => svgUri(animalSvg(seed)) },
+  pessoas: { label: 'Pessoas', render: people },
 } as const
 export type AvatarStyle = keyof typeof AVATAR_STYLES
 
 export function avatarUri(value: string) {
   const [style, seed] = value.split(':') as [AvatarStyle, string]
   const def = AVATAR_STYLES[style]
-  if (!def || !seed) return null
-  return createAvatar(def.style as never, { seed, radius: 50, backgroundColor: ['ffe29b', 'b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', 'c7f0d8'] }).toDataUri()
+  return def && seed ? def.render(seed) : null
 }
 
 // Avatar do usuário: desenho escolhido ou as iniciais em degradê.
 export function UserAvatar({ name, avatar, ...props }: { name: string; avatar?: string | null } & AvatarProps) {
   const src = useMemo(() => (avatar ? avatarUri(avatar) : null), [avatar])
   return src
-    ? <Avatar src={src} alt={name} radius="xl" variant="light" {...props} />
-    : <Avatar variant="gradient" radius="xl" {...props}>{initials(name)}</Avatar>
+    ? <Avatar src={src} alt={name} radius="md" {...props} />
+    : <Avatar variant="gradient" radius="md" {...props}>{initials(name)}</Avatar>
 }

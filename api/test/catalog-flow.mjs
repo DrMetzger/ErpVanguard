@@ -1,6 +1,7 @@
 // Teste de ponta a ponta de Cadastros, Fiscal, Configurações e avatar contra uma API rodando.
 // Uso: API=http://localhost:3000/api ADMIN_EMAIL=... ADMIN_PASSWORD=... node test/catalog-flow.mjs
 import assert from 'node:assert/strict'
+import forge from 'node-forge'
 
 const API = process.env.API ?? 'http://localhost:3000/api'
 const run = Date.now().toString(36).slice(-5).toUpperCase()
@@ -92,6 +93,70 @@ assert.equal(r.tes.code, '501'); assert.equal(r.cfop, '5102'); assert.equal(r.in
 r = await call(tFis, 'POST', '/fiscal/resolve', { operationTypeId: opVenda.id, uf: 'RJ', taxpayer: '1', productId: prod.id })
 assert.equal(r.tes.code, tesSt.code); assert.equal(r.cfop, '6404'); assert.equal(r.interstate, true)
 ok(`matriz: venda em SP → TES 501/CFOP 5102; ferragem para RJ → TES ${tesSt.code}/CFOP 6404 (regra mais específica)`)
+
+// Empresas e filiais
+const head = cnpj(String(Math.floor(Math.random() * 1e8)).padStart(8, '7') + '0001')
+const branchDoc = cnpj(head.slice(0, 8) + '0002')
+const code4 = () => String(1000 + Math.floor(Math.random() * 9000))
+const current = await call(admin, 'GET', '/catalog/companies')
+for (const c of current.filter((c) => c.isHead)) await call(admin, 'PATCH', `/catalog/companies/${c.id}`, { isHead: false })
+const matriz = await call(admin, 'POST', '/catalog/companies', { code: code4(), isHead: true, document: head, name: 'Matriz ' + run, uf: 'SP', crt: '3' })
+await call(admin, 'POST', '/catalog/companies', { code: code4(), isHead: true, document: branchDoc, name: 'Filial ' + run, uf: 'RJ' }, 409)
+const filial = await call(admin, 'POST', '/catalog/companies', { code: code4(), isHead: false, document: branchDoc, name: 'Filial ' + run, uf: 'RJ' })
+await call(admin, 'POST', '/catalog/companies', { code: code4(), document: head, name: 'Duplicada', uf: 'SP' }, 409)
+await call(tCad, 'POST', '/catalog/companies', { code: code4(), document: cnpj('123456780001'), name: 'x', uf: 'SP' }, 403)
+r = await call(tFis, 'POST', '/fiscal/resolve', { operationTypeId: opVenda.id, uf: 'RJ', taxpayer: '1' })
+assert.equal(r.companyUf, 'SP'); assert.equal(r.interstate, true)
+r = await call(tFis, 'POST', '/fiscal/resolve', { operationTypeId: opVenda.id, companyId: filial.id, uf: 'RJ', taxpayer: '1' })
+assert.equal(r.companyUf, 'RJ'); assert.equal(r.interstate, false); assert.equal(r.cfop, '5102')
+ok('empresas: só uma matriz, CNPJ único, só admin cadastra; filial do RJ vendendo para o RJ é dentro do estado')
+
+// Logo para DANFE e relatórios
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+await call(tCad, 'PUT', `/companies/${matriz.id}/logo`, { logo: png }, 403)
+await call(admin, 'PUT', `/companies/${matriz.id}/logo`, { logo: 'data:image/svg+xml;base64,PHN2Zz4=' }, 400)
+await call(admin, 'PUT', `/companies/${matriz.id}/logo`, { logo: png })
+const brand = await call(tSol, 'GET', '/companies/branding')
+assert.equal(brand.id, matriz.id); assert.equal(brand.logo, png)
+assert.equal((await call(tSol, 'GET', `/companies/branding?companyId=${filial.id}`)).logo, null)
+ok('logo da matriz (PNG/JPG) salvo e usado no cabeçalho dos relatórios')
+
+// Certificado digital A1
+function makePfx(document, name, password, days) {
+  const keys = forge.pki.rsa.generateKeyPair(1024)
+  const cert = forge.pki.createCertificate()
+  cert.publicKey = keys.publicKey
+  cert.serialNumber = '0' + Math.floor(Math.random() * 1e12).toString(16)
+  cert.validity.notBefore = new Date(Date.now() - 86400e3)
+  cert.validity.notAfter = new Date(Date.now() + days * 86400e3)
+  const attrs = [{ name: 'commonName', value: `${name}:${document}` }, { name: 'countryName', value: 'BR' }]
+  cert.setSubject(attrs)
+  cert.setIssuer([{ name: 'commonName', value: 'AC Teste' }])
+  cert.sign(keys.privateKey, forge.md.sha256.create())
+  const p12 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], password, { algorithm: '3des' })
+  return forge.util.encode64(forge.asn1.toDer(p12).getBytes())
+}
+const good = makePfx(head, 'MATRIZ ' + run, 'Senha@A1', 20)
+await call(admin, 'POST', '/certificates', { companyId: filial.id, file: good, password: 'errada' }, 400)
+await call(admin, 'POST', '/certificates', { companyId: filial.id, file: makePfx(cnpj('112223330001'), 'OUTRA', 'x', 200), password: 'x' }, 400)
+await call(admin, 'POST', '/certificates', { companyId: filial.id, file: makePfx(head, 'VENCIDO', 'x', -2), password: 'x' }, 400)
+await call(tCad, 'POST', '/certificates', { companyId: filial.id, file: good, password: 'Senha@A1' }, 403)
+const cert = await call(admin, 'POST', '/certificates', { companyId: filial.id, file: good, password: 'Senha@A1' })
+assert.equal(cert.holderDocument, head); assert.equal(cert.subject, 'MATRIZ ' + run); assert.ok(cert.daysLeft >= 19 && cert.daysLeft <= 20, String(cert.daysLeft))
+const list = await call(admin, 'GET', '/certificates')
+assert.ok(!JSON.stringify(list).includes(good.slice(0, 40)) && !JSON.stringify(list).includes('Senha@A1'), 'arquivo e senha nunca voltam')
+await call(tCad, 'GET', '/certificates', undefined, 403)
+const bell = await call(admin, 'GET', '/notifications')
+assert.ok(bell.some((n) => n.kind === 'certificado' && n.title.includes('vence em')), 'sino avisa o vencimento')
+const renewed = await call(admin, 'POST', '/certificates', { companyId: filial.id, file: makePfx(head, 'MATRIZ ' + run, 'nova', 365), password: 'nova' })
+const after = await call(admin, 'GET', '/certificates')
+assert.equal(after.filter((c) => c.companyId === filial.id && c.active).length, 1)
+assert.equal(after.find((c) => c.id === cert.id).active, false)
+await call(admin, 'DELETE', `/certificates/${cert.id}`, undefined, 204)
+await call(admin, 'DELETE', `/certificates/${renewed.id}`, undefined, 204)
+await call(admin, 'PATCH', `/catalog/companies/${matriz.id}`, { isHead: false, active: false })
+await call(admin, 'PATCH', `/catalog/companies/${filial.id}`, { active: false })
+ok('certificado A1: senha, CNPJ (raiz da matriz vale para a filial) e validade conferidos; guardado cifrado; renovação troca o ativo; sino avisa 30 dias antes')
 
 // Configurações
 await call(tCad, 'GET', '/settings', undefined, 403)

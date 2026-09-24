@@ -2,7 +2,7 @@ import { Anchor, Button, Card, Group, SimpleGrid, Stack, Table, Text, Textarea, 
 import { IconArrowLeft, IconCheck, IconClock, IconPrinter, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Loading, PageHeader, Status } from '../../components/ui'
+import { Loading, PageHeader, ReportHeader, Status } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useUser } from '../../lib/auth'
 import { cnpj, date, money, price, qty } from '../../lib/format'
@@ -34,6 +34,7 @@ export default function OrderDetail() {
 
   return (
     <>
+      <ReportHeader title={`Pedido de compra ${o.code}`} />
       <PageHeader
         back={<Anchor component={Link} to="/compras/pedidos" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Pedidos</Group></Anchor>}
         title={<Group gap="sm">{o.code} <Status value={o.status} /></Group>}

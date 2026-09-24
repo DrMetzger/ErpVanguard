@@ -1,6 +1,6 @@
 import { Center, Loader } from '@mantine/core'
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import { useAuth } from './lib/auth'
 import { modules } from './modules'
@@ -10,7 +10,6 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 import Login from './pages/Login'
 const ModuleSoon = lazy(() => import('./pages/ModuleSoon'))
 const Cadastros = lazy(() => import('./pages/cadastros'))
-const Fiscal = lazy(() => import('./pages/fiscal'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Stock = lazy(() => import('./pages/Stock'))
 const Users = lazy(() => import('./pages/Users'))
@@ -27,7 +26,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="cadastros/*" element={<Cadastros />} />
         <Route path="estoque" element={<Stock />} />
-        <Route path="fiscal/*" element={<Fiscal />} />
+        <Route path="fiscal/*" element={<FiscalRedirect />} />
         <Route path="compras/*" element={<Compras />} />
         <Route path="minha-conta" element={<Account />} />
         {user.role === 'admin' && <Route path="usuarios" element={<Users />} />}
@@ -38,4 +37,10 @@ export default function App() {
     </Routes>
     </Suspense>
   )
+}
+
+// Fiscal agora fica em Cadastros.
+function FiscalRedirect() {
+  const tab = useParams()['*']
+  return <Navigate to={`/cadastros/fiscal/${tab ?? ''}`} replace />
 }

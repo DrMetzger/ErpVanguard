@@ -88,9 +88,9 @@ export class InvoicesController {
 
       const { id } = (await one(
         tx,
-        `INSERT INTO invoices (access_key, number, series, issue_date, supplier_id, purchase_order_id, total, xml, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-        [nfe.accessKey, nfe.number, nfe.series, nfe.issueDate, supplier!.id, orderId, nfe.total, dto.xml, me.id],
+        `INSERT INTO invoices (access_key, number, series, issue_date, supplier_id, purchase_order_id, total, xml, created_by, recipient_document)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [nfe.accessKey, nfe.number, nfe.series, nfe.issueDate, supplier!.id, orderId, nfe.total, dto.xml, me.id, digits(nfe.recipientDocument) || null],
       ))!
       for (const item of nfe.items) {
         await tx.query(
@@ -344,7 +344,8 @@ export class InvoicesController {
         `SELECT i.id, i.access_key AS "accessKey", i.number, i.series, i.issue_date AS "issueDate", i.total, i.status,
                 i.posted_at AS "postedAt", i.created_at AS "createdAt", i.supplier_id AS "supplierId",
                 s.name AS "supplierName", s.cnpj AS "supplierCnpj", i.purchase_order_id AS "purchaseOrderId",
-                o.number AS "orderNumber", o.status AS "orderStatus"
+                o.number AS "orderNumber", o.status AS "orderStatus", i.recipient_document AS "recipientDocument",
+                (SELECT code || ' · ' || coalesce(trade_name, name) FROM companies c WHERE c.document = i.recipient_document) AS "companyLabel"
          FROM invoices i JOIN suppliers s ON s.id = i.supplier_id LEFT JOIN purchase_orders o ON o.id = i.purchase_order_id
          WHERE i.id = $1`,
         [id],
@@ -377,6 +378,10 @@ export class InvoicesController {
       }
     }
     if (invoice.status === 'pendente' && !invoice.purchaseOrderId) warnings.push('Nota sem pedido de compra vinculado')
+    if (invoice.status === 'pendente' && invoice.recipientDocument && !invoice.companyLabel) {
+      const [{ n }] = await tx.query(`SELECT count(*)::int AS n FROM companies`)
+      if (n > 0) warnings.push(`O destinatário da nota (CNPJ ${invoice.recipientDocument}) não é nenhuma das suas empresas cadastradas`)
+    }
 
     const orders = (
       await tx.query(

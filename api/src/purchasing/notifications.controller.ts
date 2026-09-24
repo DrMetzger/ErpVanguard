@@ -1,14 +1,14 @@
 import { Controller, Get } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
-import { can } from '../common/access'
+import { can, isAdmin } from '../common/access'
 import type { User } from '../users/user.entity'
 import { nextLevel } from './approval'
 import { buyerGroupIds, code } from './purchasing.helpers'
 
 interface Notice {
   id: string
-  kind: 'aprovacao' | 'cotacao' | 'nota' | 'solicitacao' | 'reprovado'
+  kind: 'aprovacao' | 'cotacao' | 'nota' | 'solicitacao' | 'reprovado' | 'certificado'
   title: string
   description: string
   link: string
@@ -81,6 +81,23 @@ export class NotificationsController {
         notices.push({
           id: `reprovado-${o.id}`, kind: 'reprovado', title: `${code('PC', o.number)} reprovado`, description: o.comment ?? '',
           link: `/compras/pedidos/${o.id}`, createdAt: o.createdAt,
+        })
+      }
+    }
+
+    // Administrador: certificado A1 vencendo nos próximos 30 dias (ou já vencido).
+    if (isAdmin(me)) {
+      const certs = await this.db.query(
+        `SELECT c.id, c.valid_to AS "validTo", floor(extract(epoch FROM c.valid_to - now()) / 86400)::int AS days,
+                co.code || ' · ' || coalesce(co.trade_name, co.name) AS company
+         FROM certificates c JOIN companies co ON co.id = c.company_id
+         WHERE c.active AND c.valid_to < now() + interval '30 days'`,
+      )
+      for (const c of certs) {
+        notices.push({
+          id: `certificado-${c.id}`, kind: 'certificado',
+          title: c.days < 0 ? 'Certificado A1 vencido' : c.days === 0 ? 'Certificado A1 vence hoje' : `Certificado A1 vence em ${c.days} dia(s)`,
+          description: `${c.company} · renove para continuar emitindo notas`, link: '/cadastros/empresas/certificados', createdAt: new Date().toISOString(),
         })
       }
     }

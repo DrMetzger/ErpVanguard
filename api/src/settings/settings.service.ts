@@ -10,14 +10,14 @@ export interface CompanySettings { name: string; cnpj: string; uf: string }
 // Chave de criptografia derivada do segredo do servidor (nunca vai para o banco).
 const key = () => createHash('sha256').update(`${config.jwtSecret}:app-settings`).digest()
 
-function encrypt(text: string) {
+export function encrypt(text: string) {
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key(), iv)
   const data = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()])
   return { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') }
 }
 
-function decrypt(box: { iv: string; tag: string; data: string }) {
+export function decrypt(box: { iv: string; tag: string; data: string }) {
   const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(box.iv, 'base64'))
   decipher.setAuthTag(Buffer.from(box.tag, 'base64'))
   return Buffer.concat([decipher.update(Buffer.from(box.data, 'base64')), decipher.final()]).toString('utf8')

@@ -204,6 +204,8 @@ export interface Invoice {
   supplierName: string
   supplierCnpj: string
   supplierId: string
+  recipientDocument: string | null
+  companyLabel: string | null
   purchaseOrderId: string | null
   orderCode: string | null
   items: InvoiceItem[]
@@ -215,7 +217,7 @@ export interface Invoice {
 
 export interface Notice {
   id: string
-  kind: 'aprovacao' | 'cotacao' | 'nota' | 'solicitacao' | 'reprovado'
+  kind: 'aprovacao' | 'cotacao' | 'nota' | 'solicitacao' | 'reprovado' | 'certificado'
   title: string
   description: string
   link: string

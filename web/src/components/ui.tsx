@@ -2,6 +2,8 @@ import { Badge, Box, Center, Group, Loader, Select, Stack, Text, ThemeIcon, Titl
 import { IconInbox } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
+import { cnpj } from '../lib/format'
+import { useApi } from '../lib/hooks'
 import type { Product } from '../lib/types'
 
 const STATUS: Record<string, [string, string]> = {
@@ -75,5 +77,28 @@ export function ProductSelect({ value, onChange, ...props }: { value: { id: stri
       comboboxProps={{ shadow: 'lg' }}
       {...props}
     />
+  )
+}
+
+interface Branding { name: string; tradeName: string | null; document: string; ie: string | null; phone: string | null; email: string | null; street: string | null; number: string | null; district: string | null; city: string | null; uf: string; logo: string | null }
+
+// Cabeçalho dos documentos impressos: logo e dados da matriz (Cadastros › Empresas).
+export function ReportHeader({ title }: { title: string }) {
+  const { data: b } = useApi<Branding | null>('/companies/branding')
+  if (!b) return null
+  const address = [b.street && `${b.street}${b.number ? `, ${b.number}` : ''}`, b.district, b.city && `${b.city}/${b.uf}`].filter(Boolean).join(' · ')
+  return (
+    <Group className="print-only report-header" justify="space-between" align="center" wrap="nowrap" mb="md" pb="sm">
+      <Group gap="md" wrap="nowrap">
+        {b.logo && <img src={b.logo} alt="" style={{ maxHeight: 64, maxWidth: 200, objectFit: 'contain' }} />}
+        <div>
+          <Text fw={800}>{b.name}</Text>
+          <Text size="xs">CNPJ {cnpj(b.document)}{b.ie && ` · IE ${b.ie}`}</Text>
+          {address && <Text size="xs">{address}</Text>}
+          {(b.phone || b.email) && <Text size="xs">{[b.phone, b.email].filter(Boolean).join(' · ')}</Text>}
+        </div>
+      </Group>
+      <Text fw={800} size="lg" ta="right">{title}</Text>
+    </Group>
   )
 }

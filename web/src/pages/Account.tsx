@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Group, PasswordInput, SegmentedControl, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { IconRefresh } from '@tabler/icons-react'
+import { ANIMAL_NAMES } from '../components/avatars/vanguard'
 import { AVATAR_STYLES, UserAvatar, type AvatarStyle } from '../components/UserAvatar'
 import { useState, type FormEvent } from 'react'
 import { api } from '../lib/api'
@@ -55,10 +56,13 @@ export default function Account() {
 function AvatarPicker() {
   const user = useUser()
   const { refresh } = useAuth()
-  const [style, setStyle] = useState<AvatarStyle>(((user.avatar?.split(':')[0] as AvatarStyle) in AVATAR_STYLES ? user.avatar!.split(':')[0] : 'notionists') as AvatarStyle)
+  const [style, setStyle] = useState<AvatarStyle>(((user.avatar?.split(':')[0] as AvatarStyle) in AVATAR_STYLES ? user.avatar!.split(':')[0] : 'perfis') as AvatarStyle)
   const [round, setRound] = useState(0)
   const { busy, run } = useAction()
-  const seeds = Array.from({ length: 12 }, (_, i) => `${user.id.slice(0, 8)}-${round}-${i}`)
+  // Bichos: um de cada; os outros estilos, 12 variações.
+  const seeds = style === 'bichos'
+    ? ANIMAL_NAMES.map((a) => `${a}-${user.id.slice(0, 6)}${round}`)
+    : Array.from({ length: 12 }, (_, i) => `${user.id.slice(0, 8)}-${round}-${i}`)
   const choose = (avatar: string | null) => run(async () => { await api<User>('/auth/me', { method: 'PATCH', body: { avatar } }); await refresh() }, 'Avatar atualizado')
 
   return (
@@ -76,12 +80,12 @@ function AvatarPicker() {
           const value = `${style}:${seed}`
           return (
             <UnstyledButton key={seed} onClick={() => choose(value)} aria-label="Escolher avatar" className={`avatar-option ${user.avatar === value ? 'selected' : ''}`}>
-              <UserAvatar name={user.name} avatar={value} size={52} />
+              <UserAvatar name={user.name} avatar={value} size={60} />
             </UnstyledButton>
           )
         })}
       </SimpleGrid>
-      <Text size="xs" c="dimmed">Desenhos do DiceBear (licenças livres para uso comercial), gerados aqui mesmo, sem enviar seus dados para fora.</Text>
+      <Text size="xs" c="dimmed">Perfis e Bichos são desenhos do próprio Vanguard; Pessoas usa o Avataaars (livre para uso comercial). Tudo gerado aqui mesmo, sem enviar seus dados para fora.</Text>
     </Stack>
   )
 }

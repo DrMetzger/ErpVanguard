@@ -46,7 +46,10 @@ export default function InvoiceDetail() {
       <Card mb="md">
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
           <div><Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fornecedor</Text><Text fw={600}>{nf.supplierName}</Text><Text size="xs" c="dimmed" ff="monospace">{cnpj(nf.supplierCnpj)}</Text></div>
-          <div><Text size="xs" c="dimmed" tt="uppercase" fw={700}>Emissão</Text><Text>{date(nf.issueDate)}</Text></div>
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Emissão · destinatário</Text><Text>{date(nf.issueDate)}</Text>
+            <Text size="xs" c={nf.companyLabel ? 'dimmed' : 'orange'}>{nf.companyLabel ?? (nf.recipientDocument ? cnpj(nf.recipientDocument) : '—')}</Text>
+          </div>
           <div><Text size="xs" c="dimmed" tt="uppercase" fw={700}>Total da nota</Text><Text fw={800} fz="xl">{money(nf.total)}</Text></div>
           <div>
             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Pedido de compra</Text>

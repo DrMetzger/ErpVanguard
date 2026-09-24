@@ -24,19 +24,27 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
 
 ### Menu
 
-Início · **Cadastros** · **Compras** · **Estoque** · **Fiscal** · Faturamento · Financeiro · BI — e, para
-administradores, **Usuários** e **Configurações**.
+Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empresas) · **Compras** · **Estoque** ·
+Faturamento · Financeiro · BI — e, para administradores, **Usuários** e **Configurações**.
 
-- **Cadastros:** produtos (tipo SPED, grupo, unidade, NCM, origem), grupos, tipos, unidades, NCM,
-  fornecedores, clientes, tabelas de preço e amarração produto × fornecedor.
-- **Fiscal:** CFOP, tipos de operação, TES (tipos de entrada e saída: CFOP, estoque, financeiro,
+- **Cadastros › Produtos:** produtos (tipo SPED, grupo, unidade, NCM, origem), grupos, tipos, unidades, NCM
+  e tabelas de preço.
+- **Cadastros › Clientes e fornecedores:** fornecedores, clientes e amarração produto × fornecedor.
+- **Cadastros › Fiscal:** CFOP, tipos de operação, TES (tipos de entrada e saída: CFOP, estoque, financeiro,
   CSTs e impostos) e matriz fiscal (qual TES usar por operação, UF, contribuinte, tipo/grupo e NCM;
-  vence a regra mais específica), com simulador.
+  vence a regra mais específica), com simulador por empresa/filial.
+- **Cadastros › Empresas:** matriz e filiais (a UF de cada uma decide CFOP 5xxx × 6xxx), logo para DANFE e
+  relatórios (PNG/JPG, sai no cabeçalho dos impressos) e **certificado digital A1** (.pfx): a API confere
+  senha, CNPJ (a raiz da matriz vale para as filiais) e validade; arquivo e senha ficam criptografados
+  (AES-256-GCM) e nunca voltam para a tela; o sino avisa 30 dias antes de vencer. Só administradores.
 - **Estoque:** saldos, custo médio e movimentações.
-- **Configurações:** dados da empresa (a UF decide CFOP 5xxx × 6xxx), chave e modelos do Gemini
-  (chave criptografada no banco, prioridade sobre o secret do servidor) e IA automática no XML.
+- **Configurações:** chave e modelos do Gemini (chave criptografada no banco, prioridade sobre o secret do
+  servidor) e IA automática no XML.
 - **Perfis:** solicitante, comprador, aprovador, cadastro e fiscal (administrador tem todos).
-- **Avatar:** estilos gratuitos do DiceBear gerados localmente (CC0 / uso comercial livre).
+- **Avatar:** "Perfis" e "Bichos" são desenhos próprios do Vanguard (`web/src/components/avatars`);
+  "Pessoas" usa o Avataaars (uso comercial livre) só com expressões alegres.
+
+Endereços antigos (`/fiscal/...`, `/cadastros/<aba>`, `/compras/fornecedores`) redirecionam para os novos.
 
 Os cadastros simples são descritos uma vez em `api/src/catalog/resources.ts`; a API
 (`/api/catalog/:nome`) e as telas se montam a partir dessa descrição.

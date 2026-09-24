@@ -6,6 +6,7 @@ import { IconDoorExit, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpan
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth, useUser } from '../lib/auth'
 import { home, modules } from '../modules'
+import { CADASTRO_GROUPS } from '../pages/cadastros/groups'
 import { Logo } from './Logo'
 import { NotificationsBell } from './NotificationsBell'
 import { UserAvatar } from './UserAvatar'
@@ -29,6 +30,37 @@ export default function AppLayout() {
   const isActive = (path: string) => (path === '/' ? location.pathname === '/' : location.pathname.startsWith(path))
 
   const link = (item: { path: string; icon: Icon; title: string }) => {
+    // Cadastros abre os grupos logo abaixo (com o menu recolhido vira um ícone só).
+    if (item.path === '/cadastros' && !mini) {
+      return (
+        <NavLink
+          key={item.path}
+          component="button"
+          aria-label={item.title}
+          label={item.title}
+          leftSection={<item.icon size={20} stroke={1.6} />}
+          active={isActive(item.path)}
+          defaultOpened={isActive(item.path)}
+          variant="light"
+          styles={{ root: { borderRadius: 10 } }}
+          childrenOffset={14}
+        >
+          {CADASTRO_GROUPS.map((g) => (
+            <NavLink
+              key={g.path}
+              component={RouterLink}
+              to={`/cadastros/${g.path}`}
+              label={g.label}
+              leftSection={<g.icon size={17} stroke={1.6} />}
+              active={isActive(`/cadastros/${g.path}`)}
+              onClick={mobile.close}
+              variant="subtle"
+              styles={{ root: { borderRadius: 8 } }}
+            />
+          ))}
+        </NavLink>
+      )
+    }
     const navLink = (
       <NavLink
         key={item.path}

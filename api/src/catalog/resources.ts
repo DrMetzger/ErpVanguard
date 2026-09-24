@@ -32,10 +32,16 @@ export interface ResourceDef {
   order: string
   write: Permission[] // além do admin
   fields: FieldDef[]
+  // Mensagem para violações de restrições específicas do banco.
+  constraints?: Record<string, string>
 }
 
 export const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO']
 const KIND = [{ value: 'E', label: 'Entrada' }, { value: 'S', label: 'Saída' }]
+const CRT = [
+  { value: '1', label: '1 · Simples Nacional' }, { value: '2', label: '2 · Simples Nacional (excesso de sublimite)' },
+  { value: '3', label: '3 · Regime Normal (Lucro Presumido/Real)' }, { value: '4', label: '4 · MEI' },
+]
 const TAXPAYER = [{ value: '1', label: 'Contribuinte de ICMS' }, { value: '2', label: 'Contribuinte isento' }, { value: '9', label: 'Não contribuinte' }]
 const active: FieldDef = { key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true, list: true }
 
@@ -46,6 +52,30 @@ export const REF_TARGETS: Record<string, { table: string; labelExpr: string; sea
 }
 
 export const RESOURCES: ResourceDef[] = [
+  {
+    name: 'companies', module: 'cadastros', title: 'Empresas e filiais', singular: 'empresa', description: 'Matriz e filiais. A UF de cada uma define se a operação é dentro ou fora do estado.',
+    table: 'companies', labelExpr: "code || ' · ' || coalesce(trade_name, name)", search: ['code', 'name', 'trade_name', 'document', 'city'], order: 'code', write: [],
+    constraints: { companies_one_head: 'Já existe uma matriz cadastrada. Desmarque a atual antes.', companies_document_key: 'Já existe uma empresa com este CNPJ' },
+    fields: [
+      { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 4, pattern: '^\\d{2,4}$', patternMessage: '2 a 4 dígitos (ex.: 01)', list: true },
+      { key: 'isHead', column: 'is_head', label: 'Matriz', type: 'bool', default: false, list: true },
+      { key: 'document', column: 'document', label: 'CNPJ', type: 'document', required: true, list: true },
+      { key: 'name', column: 'name', label: 'Razão social', type: 'text', required: true, max: 200, list: true, span: 2 },
+      { key: 'tradeName', column: 'trade_name', label: 'Nome fantasia', type: 'text', max: 200 },
+      { key: 'crt', column: 'crt', label: 'Regime tributário (CRT)', type: 'enum', options: CRT, default: '3', required: true, span: 2 },
+      { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'text', max: 20 },
+      { key: 'im', column: 'im', label: 'Inscrição municipal', type: 'text', max: 20 },
+      { key: 'email', column: 'email', label: 'E-mail', type: 'text', max: 200, pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessage: 'E-mail inválido' },
+      { key: 'phone', column: 'phone', label: 'Telefone', type: 'text', max: 30 },
+      { key: 'zip', column: 'zip', label: 'CEP', type: 'text', pattern: '^\\d{8}$', patternMessage: 'CEP com 8 dígitos' },
+      { key: 'street', column: 'street', label: 'Endereço', type: 'text', max: 200, span: 2 },
+      { key: 'number', column: 'number', label: 'Número', type: 'text', max: 20 },
+      { key: 'district', column: 'district', label: 'Bairro', type: 'text', max: 100 },
+      { key: 'city', column: 'city', label: 'Cidade', type: 'text', max: 100, list: true },
+      { key: 'uf', column: 'uf', label: 'UF', type: 'uf', required: true, list: true },
+      active,
+    ],
+  },
   {
     name: 'product-groups', module: 'cadastros', title: 'Grupos de produtos', singular: 'grupo', description: 'Agrupam produtos para relatórios, regras fiscais e BI.',
     table: 'product_groups', labelExpr: "code || ' · ' || name", search: ['code', 'name'], order: 'code', write: ['cadastro'],

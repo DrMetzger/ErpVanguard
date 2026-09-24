@@ -1,5 +1,5 @@
 import { ActionIcon, Box, Divider, Group, Indicator, Popover, ScrollArea, Stack, Text, ThemeIcon, Tooltip, UnstyledButton } from '@mantine/core'
-import { IconAlertTriangle, IconBell, IconChecks, IconFileInvoice, IconFileText, IconScale } from '@tabler/icons-react'
+import { IconAlertTriangle, IconBell, IconCertificate, IconChecks, IconFileInvoice, IconFileText, IconScale } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
@@ -12,29 +12,31 @@ const KIND = {
   nota: { icon: IconFileInvoice, color: 'cyan' },
   solicitacao: { icon: IconFileText, color: 'teal' },
   reprovado: { icon: IconAlertTriangle, color: 'red' },
+  certificado: { icon: IconCertificate, color: 'orange' },
 } as const
 
-// Sino de avisos: recarrega a cada minuto e a cada troca de tela.
+// Sino de avisos: recarrega a cada minuto, a cada troca de tela e ao abrir.
 export function NotificationsBell() {
   const [notices, setNotices] = useState<Notice[]>([])
   const [opened, setOpened] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
 
+  const [opens, setOpens] = useState(0)
   useEffect(() => {
     let alive = true
     const load = () => api<Notice[]>('/notifications').then((n) => alive && setNotices(n)).catch(() => {})
     load()
     const timer = setInterval(load, 60_000)
     return () => { alive = false; clearInterval(timer) }
-  }, [location.pathname])
+  }, [location.pathname, opens])
 
   return (
     <Popover opened={opened} onChange={setOpened} width={360} position="bottom-end" shadow="lg" radius="lg">
       <Popover.Target>
         <Tooltip label="Avisos" disabled={opened}>
           <Indicator label={notices.length > 9 ? '9+' : notices.length} size={18} color="red" offset={6} disabled={!notices.length}>
-            <ActionIcon variant="default" size="lg" radius="xl" onClick={() => setOpened((o) => !o)} aria-label="Avisos">
+            <ActionIcon variant="default" size="lg" radius="xl" onClick={() => { if (!opened) setOpens((n) => n + 1); setOpened((o) => !o) }} aria-label="Avisos">
               <IconBell size={19} stroke={1.7} />
             </ActionIcon>
           </Indicator>

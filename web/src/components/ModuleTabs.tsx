@@ -14,7 +14,7 @@ export function ModuleTabs({ base, title, tabs, extraRoutes }: { base: string; t
 
   return (
     <>
-      <Title order={2} mb="md">{title}</Title>
+      <Title order={2} mb="md" className="no-print">{title}</Title>
       <Tabs value={current} onChange={(v) => v && navigate(`${base}/${v}`)} mb="lg" className="no-print">
         <Tabs.List style={{ flexWrap: 'nowrap', overflowX: 'auto', overflowY: 'hidden' }}>
           {visible.map((t) => <Tabs.Tab key={t.path} value={t.path} leftSection={<t.icon size={16} />} style={{ whiteSpace: 'nowrap' }}>{t.label}</Tabs.Tab>)}

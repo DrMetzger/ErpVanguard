@@ -1,9 +1,9 @@
-import { Alert, Badge, Button, Card, Group, PasswordInput, Select, SimpleGrid, Stack, Switch, TagsInput, Text, TextInput, ThemeIcon, Title } from '@mantine/core'
+import { Alert, Badge, Button, Card, Group, PasswordInput, SimpleGrid, Stack, Switch, TagsInput, Text, TextInput, ThemeIcon, Title } from '@mantine/core'
 import { IconBrain, IconBuilding, IconCircleCheck, IconFileCode, IconKey, IconPlugConnected } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Loading } from '../components/ui'
 import { api } from '../lib/api'
-import { cnpj } from '../lib/format'
 import { useAction, useApi } from '../lib/hooks'
 
 interface SettingsData {
@@ -11,7 +11,6 @@ interface SettingsData {
   nfe: { autoAi: boolean }
   company: { name: string; cnpj: string; uf: string }
 }
-const UFS = 'AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' ')
 const SOURCE = { tela: 'Configurada nesta tela', servidor: 'Configurada no servidor (GitHub)', nenhuma: 'Não configurada' }
 
 function Section({ icon: Icon, title, description, children }: { icon: typeof IconKey; title: string; description: string; children: React.ReactNode }) {
@@ -31,7 +30,6 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
   const [fallbacks, setFallbacks] = useState<string[]>([])
-  const [company, setCompany] = useState({ name: '', cnpj: '', uf: 'SP' })
   const [test, setTest] = useState<{ ok: boolean; model: string | null; seconds: number; answer: string | null } | null>(null)
   const { busy, run } = useAction()
 
@@ -39,7 +37,6 @@ export default function Settings() {
     if (!data) return
     setModel(data.gemini.model)
     setFallbacks(data.gemini.fallbackModels)
-    setCompany({ ...data.company, cnpj: cnpj(data.company.cnpj) })
   }, [data])
 
   if (!data) return <Loading />
@@ -50,13 +47,8 @@ export default function Settings() {
       <Title order={2} mb={4}>Configurações</Title>
       <Text c="dimmed" mb="lg">Só administradores veem esta tela.</Text>
       <Stack gap="lg" maw={900}>
-        <Section icon={IconBuilding} title="Empresa" description="A UF da empresa define se a operação é dentro ou fora do estado (CFOP 5xxx ou 6xxx).">
-          <SimpleGrid cols={{ base: 1, sm: 3 }}>
-            <TextInput label="Razão social" value={company.name} onChange={(e) => setCompany({ ...company, name: e.currentTarget.value })} />
-            <TextInput label="CNPJ" value={company.cnpj} onChange={(e) => setCompany({ ...company, cnpj: e.currentTarget.value })} inputMode="numeric" />
-            <Select label="UF" data={UFS} value={company.uf} onChange={(v) => setCompany({ ...company, uf: v ?? 'SP' })} searchable allowDeselect={false} />
-          </SimpleGrid>
-          <Group justify="flex-end" mt="md"><Button onClick={() => put('company', company, 'Dados da empresa salvos')} loading={busy}>Salvar empresa</Button></Group>
+        <Section icon={IconBuilding} title="Empresas, filiais, logo e certificado A1" description="Agora ficam em Cadastros › Empresas: dados de cada filial (a UF define CFOP 5xxx ou 6xxx), logo do DANFE e dos relatórios e o certificado digital.">
+          <Group justify="flex-end"><Button component={Link} to="/cadastros/empresas" variant="light">Abrir Cadastros › Empresas</Button></Group>
         </Section>
 
         <Section icon={IconBrain} title="Inteligência artificial (Gemini)" description="Usada para amarrar itens de notas fiscais aos seus produtos. A chave fica criptografada e nunca é mostrada inteira.">

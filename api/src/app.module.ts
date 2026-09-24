@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { AuthGuard } from './auth/auth.guard'
 import { AuthModule } from './auth/auth.module'
 import { CatalogModule } from './catalog/catalog.module'
+import { CompaniesModule } from './companies/companies.module'
 import { config } from './config'
 import { migrations } from './database/migrations'
 import { HealthController } from './health/health.controller'
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module'
     PurchasingModule,
     SettingsModule,
     CatalogModule,
+    CompaniesModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
