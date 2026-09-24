@@ -2,13 +2,8 @@ name: Android
 
 # Gera o app Android. Sempre produz um APK de teste; com os secrets da chave de
 # upload configurados, gera também o AAB assinado para a Play Store.
+# Pausado até o ERP ser validado: só roda manualmente (aba Actions > Android > Run workflow).
 on:
-  push:
-    branches: [main, claude/keen-dirac-i5mx15]
-    paths:
-      - 'mobile/**'
-      - 'web/**'
-      - '.github/workflows/android.yml'
   workflow_dispatch:
 
 jobs:
