@@ -35,8 +35,16 @@ jobs:
           # Keys pasted from a Windows terminal often arrive with CRLF, trailing
           # spaces or all on one line; rebuild the standard PEM layout.
           python3 - <<'PY'
-          import os, re
+          import base64, os, re
           raw = os.environ["VPS_SSH_KEY"].replace("\r", "")
+          if "-----BEGIN" not in raw:
+              # Also accept the key as a single base64 line (base64 -w0 ~/.ssh/github_actions).
+              try:
+                  raw = base64.b64decode(re.sub(r"\s+", "", raw), validate=True).decode()
+              except Exception:
+                  pass
+          if raw.lstrip().startswith("ssh-"):
+              raise SystemExit("::error::VPS_SSH_KEY contém a chave PÚBLICA (ssh-ed25519 ...). Use a chave privada")
           m = re.search(r"-----BEGIN ([A-Z ]+)-----(.*?)-----END \1-----", raw, re.S)
           if not m:
               raise SystemExit("::error::VPS_SSH_KEY não contém as linhas BEGIN/END da chave privada")
