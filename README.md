@@ -22,6 +22,25 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
   Senha inicial do administrador: `sudo grep ADMIN_PASSWORD /opt/vanguard/.env`
 - **Tarefas na VPS:** workflow *VPS* (aba Actions) com `status` e `setup`.
 
+### Módulo de Compras
+
+Fluxo: **solicitação (SC)** → **cotação** com vários fornecedores → **análise** (mapa comparativo, menor
+preço destacado) → **pedido de compra** por fornecedor vencedor → **aprovação por alçada** →
+**entrada da NF-e por XML** (estoque, custo médio e baixa do pedido).
+
+- **Perfis de usuário:** solicitante, comprador, aprovador e administrador (tela *Usuários*).
+- **Grupos de compras:** os compradores do grupo atendem as SCs dele; cada grupo aponta para uma alçada.
+- **Alçadas:** níveis com limite de valor e aprovadores. O pedido sobe nível a nível até o limite que
+  cobre o valor; quem gerou o pedido não pode aprová-lo. Grupo sem alçada gera pedido já aprovado.
+- **XML:** a leitura é exata (sem IA). A amarração dos itens usa, nesta ordem: código do fornecedor já
+  conhecido, código de barras, descrição parecida com o item do pedido e, sob demanda, o **Gemini**.
+  Ao lançar, o sistema aprende a amarração produto × fornecedor.
+- **IA (Gemini):** crie o secret `GEMINI_API_KEY` no GitHub; o deploy grava no `.env` da VPS.
+  Opcional: a variável `GEMINI_MODEL` (padrão `gemini-2.5-flash`).
+
+Testes: `npm test` (integração com o Gemini simulada) e `npm run test:compras` (fluxo completo contra
+uma API rodando, com `API`, `ADMIN_EMAIL` e `ADMIN_PASSWORD`).
+
 ### Desenvolvimento local
 
 ```bash

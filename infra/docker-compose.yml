@@ -26,6 +26,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@erpvanguard.com.br}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       TZ: America/Sao_Paulo
     depends_on:
       db:

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api.js'
 import Icon from '../components/Icon.jsx'
+import { parseNumber } from '../ui.jsx'
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 const qty = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 })
@@ -8,14 +9,6 @@ const qty = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 })
 const empty = { sku: '', name: '', barcode: '', ncm: '', unit: 'UN', costPrice: '', salePrice: '', stock: '', minStock: '' }
 const numberFields = { costPrice: 'Preço de custo', salePrice: 'Preço de venda', stock: 'Estoque atual', minStock: 'Estoque mínimo' }
 
-// Formato brasileiro: "1.234,56", "1.200" (mil e duzentos) ou "0,35". Também aceita "1234.56".
-const parseNumber = (value) => {
-  const text = String(value).trim().replace(/\s/g, '')
-  if (!text) return undefined
-  if (text.includes(',')) return Number(text.replace(/\./g, '').replace(',', '.'))
-  if (/^-?\d{1,3}(\.\d{3})+$/.test(text)) return Number(text.replace(/\./g, ''))
-  return Number(text)
-}
 
 export default function Products() {
   const [items, setItems] = useState(null)

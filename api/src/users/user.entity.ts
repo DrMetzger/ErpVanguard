@@ -1,6 +1,8 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm'
 
 export type UserRole = 'admin' | 'user'
+export const PERMISSIONS = ['solicitante', 'comprador', 'aprovador'] as const
+export type Permission = (typeof PERMISSIONS)[number]
 
 @Entity('users')
 export class User {
@@ -18,6 +20,9 @@ export class User {
 
   @Column({ type: 'varchar', default: 'user' })
   role: UserRole
+
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  permissions: Permission[]
 
   @Column({ default: true })
   active: boolean

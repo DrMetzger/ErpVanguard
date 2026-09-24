@@ -42,6 +42,25 @@ jobs:
             --exclude node_modules --exclude dist \
             api web infra "$VPS_USER@$VPS_HOST:$APP_DIR/app/"
 
+      - name: Sync optional secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: |
+          if [ -z "$GEMINI_API_KEY$GEMINI_MODEL" ]; then echo "Sem GEMINI_API_KEY: IA desativada"; exit 0; fi
+          # A chave vai em base64 dentro do script enviado pelo stdin do SSH:
+          # não aparece em linha de comando nem no log.
+          key_b64=$(printf %s "$GEMINI_API_KEY" | base64 -w0)
+          ssh "$VPS_USER@$VPS_HOST" "sudo bash -s" <<EOF
+          set -e
+          umask 077
+          f=$APP_DIR/.env
+          touch \$f
+          if [ -n "$key_b64" ]; then sed -i '/^GEMINI_API_KEY=/d' \$f; echo "GEMINI_API_KEY=\$(echo $key_b64 | base64 -d)" >> \$f; fi
+          if [ -n "$GEMINI_MODEL" ]; then sed -i '/^GEMINI_MODEL=/d' \$f; echo "GEMINI_MODEL=$GEMINI_MODEL" >> \$f; fi
+          EOF
+          echo "Configuração do Gemini atualizada no servidor"
+
       - name: Build and start
         run: |
           ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR APP_DOMAIN=$APP_DOMAIN bash -s" <<'REMOTE'

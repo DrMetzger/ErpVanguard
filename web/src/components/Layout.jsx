@@ -23,12 +23,18 @@ export default function Layout() {
               <Icon name={m.icon} size={18} /> {m.title}
             </NavLink>
           ))}
+          {user.role === 'admin' && (
+            <>
+              <span className="nav-section">Administração</span>
+              <NavLink to="/usuarios" onClick={close}><Icon name="users" size={18} /> Usuários</NavLink>
+            </>
+          )}
         </nav>
         <div className="sidebar-user">
-          <div>
+          <NavLink to="/minha-conta" onClick={close} className="user-link" title="Minha conta">
             <strong>{user.name}</strong>
             <small>{user.email}</small>
-          </div>
+          </NavLink>
           <button className="icon-btn" onClick={logout} title="Sair" aria-label="Sair">
             <Icon name="logout" size={18} />
           </button>

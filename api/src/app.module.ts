@@ -8,6 +8,7 @@ import { migrations } from './database/migrations'
 import { HealthController } from './health/health.controller'
 import { Product } from './products/product.entity'
 import { ProductsModule } from './products/products.module'
+import { PurchasingModule } from './purchasing/purchasing.module'
 import { User } from './users/user.entity'
 import { UsersModule } from './users/users.module'
 
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module'
     UsersModule,
     AuthModule,
     ProductsModule,
+    PurchasingModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
