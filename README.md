@@ -7,7 +7,7 @@ ERP completo na nuvem (web + Android), da Prime ERP Soluções.
 | Pasta      | O que é                                                    | Status           |
 |------------|------------------------------------------------------------|------------------|
 | `landing/` | Landing page do site www.erpvanguard.com.br (React + Vite) | ✅ v0.1          |
-| `web/`     | ERP web (React + Vite), servido pelo Caddy com HTTPS       | ✅ v0.1          |
+| `web/`     | ERP web (React 19 + TypeScript + Mantine), servido pelo Caddy | ✅ v0.2       |
 | `api/`     | API (NestJS + TypeORM + PostgreSQL)                        | ✅ v0.1          |
 | `infra/`   | Setup da VPS e docker-compose                              | ✅               |
 | `mobile/`  | App Android (React Native / Expo)                          | 🔜               |
