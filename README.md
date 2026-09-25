@@ -37,6 +37,12 @@ Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empre
   relatórios (PNG/JPG, sai no cabeçalho dos impressos) e **certificado digital A1** (.pfx): a API confere
   senha, CNPJ (a raiz da matriz vale para as filiais) e validade; arquivo e senha ficam criptografados
   (AES-256-GCM) e nunca voltam para a tela; o sino avisa 30 dias antes de vencer. Só administradores.
+- **Notas de entrada (pré-nota → classificação):** o XML importado vira **pré-nota** (nada movimenta). O comprador
+  amarra produtos e pedido; o **fiscal** classifica: tipo de operação (E01 compra, E05 devolução de venda…) e **TES por
+  item**, sugerida pela matriz fiscal (CFOP 1xxx/2xxx). Ao classificar, a TES decide: *movimenta estoque* (entrada e custo
+  médio; em devolução, pelo custo atual) e *gera financeiro* — compra → contas a pagar pelas duplicatas do XML; devolução
+  de venda → **NCC** (crédito do cliente) no contas a receber. Na saída, devolução de compra (S03) gera **NDF** (débito do
+  fornecedor) no contas a pagar. NCC/NDF abatem o saldo e têm a baixa com o sinal invertido.
 - **Estoque:** saldos, custo médio e movimentações.
 - **Faturamento:** orçamento → pedido aprovado → faturar. Preço da tabela de preço ou do produto, desconto por item e no
   pedido, frete; TES/CFOP pela matriz fiscal (UF do cliente × UF da filial). Faturar gera a nota de saída (numeração por

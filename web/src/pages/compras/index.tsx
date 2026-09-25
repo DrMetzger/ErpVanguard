@@ -24,7 +24,7 @@ export default function Compras() {
     buyer && { path: 'cotacoes', label: 'Cotações', icon: IconScale },
     (buyer || approver) && { path: 'pedidos', label: 'Pedidos', icon: IconShoppingBag },
     approver && { path: 'aprovacoes', label: 'Aprovações', icon: IconChecks },
-    buyer && { path: 'notas', label: 'Notas (XML)', icon: IconFileInvoice },
+    (buyer || can(user, 'fiscal')) && { path: 'notas', label: 'Notas de entrada', icon: IconFileInvoice },
     user.role === 'admin' && { path: 'configuracao', label: 'Grupos e alçadas', icon: IconSettings },
   ].filter(Boolean) as { path: string; label: string; icon: typeof IconFileText }[]
 

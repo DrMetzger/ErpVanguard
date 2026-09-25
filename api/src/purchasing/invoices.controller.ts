@@ -1,11 +1,11 @@
 import {
-  BadRequestException, Body, ConflictException, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, ServiceUnavailableException,
+  BadRequestException, Body, ConflictException, ForbiddenException, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, ServiceUnavailableException,
 } from '@nestjs/common'
 import { Type } from 'class-transformer'
 import { IsArray, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator'
 import { DataSource, EntityManager } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
-import { requirePermission } from '../common/access'
+import { can, requirePermission } from '../common/access'
 import { digits, numbers, one } from '../common/db'
 import type { User } from '../users/user.entity'
 import { isValidDocument } from './documents'
@@ -13,6 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { matchWithGemini } from './gemini'
 import { parseNfe } from './nfe'
 import { code, found } from './purchasing.helpers'
+import { resolveFiscal } from '../catalog/fiscal'
 import { categoryByCode, createTitles, round2, today } from '../finance/finance.logic'
 import { similarity } from './similarity'
 
@@ -24,14 +25,22 @@ class ItemMatchDto {
   @IsUUID() id: string
   @IsOptional() @IsUUID() productId?: string | null
   @IsOptional() @IsUUID() orderItemId?: string | null
+  @IsOptional() @IsUUID() tesId?: string
 }
 
 class UpdateInvoiceDto {
   @IsOptional() @IsUUID() purchaseOrderId?: string | null
+  // Classificação fiscal: tipo de operação da nota (troca a TES sugerida de todos os itens)
+  @IsOptional() @IsUUID() operationTypeId?: string
   @IsArray() @ValidateNested({ each: true }) @Type(() => ItemMatchDto) items: ItemMatchDto[]
 }
 
 type Tx = DataSource | EntityManager
+
+// Nota de entrada: o comprador importa e amarra produtos; o fiscal classifica.
+function requireEntry(me: User) {
+  if (!can(me, 'comprador') && !can(me, 'fiscal')) throw new ForbiddenException('Seu usuário não tem o perfil "comprador" nem "fiscal"')
+}
 const RECEIVABLE = ['aprovado', 'recebido_parcial']
 
 @Controller('invoices')
@@ -40,7 +49,7 @@ export class InvoicesController {
 
   @Get()
   async list(@CurrentUser() me: User) {
-    requirePermission(me, 'comprador')
+    requireEntry(me)
     return (
       await this.db.query(
         `SELECT i.id, i.number, i.series, i.issue_date AS "issueDate", i.total, i.status, i.created_at AS "createdAt",
@@ -53,7 +62,7 @@ export class InvoicesController {
 
   @Get(':id')
   get(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
-    requirePermission(me, 'comprador')
+    requireEntry(me)
     return this.load(this.db, id)
   }
 
@@ -101,6 +110,8 @@ export class InvoicesController {
         )
       }
       await this.autoMatch(tx, id)
+      await tx.query(`UPDATE invoices SET operation_type_id = (SELECT id FROM operation_types WHERE code = 'E01') WHERE id = $1`, [id])
+      await this.suggestTes(tx, id)
       return id
     }).then(async (id) => {
       // Opção "IA automática" das Configurações: tenta amarrar o que sobrou, sem travar a importação.
@@ -114,7 +125,7 @@ export class InvoicesController {
   // Ajustes manuais do comprador (produto e item do pedido de cada linha).
   @Put(':id')
   async update(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateInvoiceDto) {
-    requirePermission(me, 'comprador')
+    requireEntry(me)
     return this.db.transaction(async (tx) => {
       const invoice = await this.pending(tx, id)
       if (dto.purchaseOrderId !== undefined) {
@@ -128,6 +139,12 @@ export class InvoicesController {
           await tx.query(`UPDATE invoice_items SET order_item_id = NULL WHERE invoice_id = $1`, [id])
         }
       }
+      if (dto.operationTypeId && dto.operationTypeId !== invoice.operation_type_id) {
+        const op = found(await one(tx, `SELECT kind FROM operation_types WHERE id = $1 AND active`, [dto.operationTypeId]), 'Tipo de operação não encontrado')
+        if (op.kind !== 'E') throw new BadRequestException('Use um tipo de operação de entrada')
+        await tx.query(`UPDATE invoices SET operation_type_id = $2 WHERE id = $1`, [id, dto.operationTypeId])
+        await tx.query(`UPDATE invoice_items SET tes_id = NULL, entry_cfop = NULL WHERE invoice_id = $1`, [id])
+      }
       for (const item of dto.items) {
         const sets: string[] = []
         const params: unknown[] = [item.id, id]
@@ -139,10 +156,17 @@ export class InvoicesController {
           params.push(item.orderItemId)
           sets.push(`order_item_id = $${params.length}`)
         }
+        if (item.tesId !== undefined) {
+          const tes = found(await one(tx, `SELECT id, kind FROM tes WHERE id = $1 AND active`, [item.tesId]), 'TES não encontrada')
+          if (tes.kind !== 'E') throw new BadRequestException('Use uma TES de entrada')
+          params.push(item.tesId)
+          sets.push(`tes_id = $${params.length}, entry_cfop = NULL`)
+        }
         if (!sets.length) continue
         found(await one(tx, `UPDATE invoice_items SET ${sets.join(', ')} WHERE id = $1 AND invoice_id = $2 RETURNING 1`, params), 'Item não pertence a esta nota')
       }
       await this.autoMatch(tx, id)
+      await this.suggestTes(tx, id)
       return this.load(tx, id)
     })
   }
@@ -198,75 +222,119 @@ export class InvoicesController {
         )
       }
       await this.autoMatch(tx, id)
+      await this.suggestTes(tx, id)
     })
   }
 
-  // Lança a nota: entrada no estoque, custo médio, baixa no pedido e amarração produto x fornecedor.
-  @Post(':id/post')
-  async post(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
-    requirePermission(me, 'comprador')
+  // Classificação fiscal da pré-nota. A TES de cada item decide: movimenta estoque (entrada e custo médio)
+  // e gera financeiro. Compra gera contas a pagar pelas duplicatas; devolução de venda gera crédito ao
+  // cliente (NCC) no contas a receber.
+  @Post(':id/classify')
+  @HttpCode(200)
+  async classify(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
+    requirePermission(me, 'fiscal')
     return this.db.transaction(async (tx) => {
       const invoice = await this.pending(tx, id)
-      const items = await tx.query(`SELECT * FROM invoice_items WHERE invoice_id = $1 ORDER BY item_number`, [id])
+      await tx.query(`SELECT id FROM invoices WHERE id = $1 FOR UPDATE`, [id])
+      const op = found(await one(tx, `SELECT id, kind, is_return, name FROM operation_types WHERE id = $1`, [invoice.operation_type_id]), 'Escolha o tipo de operação')
+      const items = await tx.query(
+        `SELECT ii.*, t.updates_stock, t.generates_financial, t.code AS tes_code FROM invoice_items ii LEFT JOIN tes t ON t.id = ii.tes_id
+         WHERE ii.invoice_id = $1 ORDER BY ii.item_number`,
+        [id],
+      )
       const missing = items.filter((i: any) => !i.product_id)
       if (missing.length) throw new BadRequestException(`Faltam produtos para os itens: ${missing.map((i: any) => i.item_number).join(', ')}`)
-
-      if (invoice.purchase_order_id) {
-        const order = found(await one(tx, `SELECT status FROM purchase_orders WHERE id = $1 FOR UPDATE`, [invoice.purchase_order_id]), 'Pedido não encontrado')
+      const noTes = items.filter((i: any) => !i.tes_id)
+      if (noTes.length) throw new BadRequestException(`Escolha a TES dos itens: ${noTes.map((i: any) => i.item_number).join(', ')}`)
+      const isReturn = !!op.is_return
+      const orderId = isReturn ? null : invoice.purchase_order_id
+      if (orderId) {
+        const order = found(await one(tx, `SELECT status FROM purchase_orders WHERE id = $1 FOR UPDATE`, [orderId]), 'Pedido não encontrado')
         if (!RECEIVABLE.includes(order.status)) throw new BadRequestException('O pedido vinculado não está aprovado')
       }
 
       const reference = `NF ${invoice.number}${invoice.series ? `/${invoice.series}` : ''}`
       for (const item of items) {
         const qty = Number(item.quantity)
-        const unitCost = qty > 0 ? Number(item.total) / qty : Number(item.unit_price)
-        const product = (await one(tx, `SELECT stock, cost_price FROM products WHERE id = $1 FOR UPDATE`, [item.product_id]))!
-        const stock = Number(product.stock)
-        const cost = Number(product.cost_price)
-        const newCost = stock > 0 ? (stock * cost + qty * unitCost) / (stock + qty) : unitCost
-        await tx.query(`UPDATE products SET stock = stock + $2, cost_price = $3, updated_at = now() WHERE id = $1`, [item.product_id, qty, newCost])
-        await tx.query(
-          `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'entrada_nf', $4, $5)`,
-          [item.product_id, qty, unitCost, reference, me.id],
-        )
-        if (item.supplier_code) {
+        if (item.updates_stock) {
+          const product = (await one(tx, `SELECT stock, cost_price FROM products WHERE id = $1 FOR UPDATE`, [item.product_id]))!
+          const stock = Number(product.stock)
+          const cost = Number(product.cost_price)
+          if (isReturn) {
+            // Devolução de venda: a mercadoria volta pelo custo médio atual (não mexe no custo).
+            await tx.query(`UPDATE products SET stock = stock + $2, updated_at = now() WHERE id = $1`, [item.product_id, qty])
+            await tx.query(
+              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'devolucao_venda', $4, $5)`,
+              [item.product_id, qty, cost, reference, me.id],
+            )
+          } else {
+            const unitCost = qty > 0 ? Number(item.total) / qty : Number(item.unit_price)
+            const newCost = stock > 0 ? (stock * cost + qty * unitCost) / (stock + qty) : unitCost
+            await tx.query(`UPDATE products SET stock = stock + $2, cost_price = $3, updated_at = now() WHERE id = $1`, [item.product_id, qty, newCost])
+            await tx.query(
+              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'entrada_nf', $4, $5)`,
+              [item.product_id, qty, unitCost, reference, me.id],
+            )
+          }
+        }
+        if (!isReturn && item.supplier_code) {
           await tx.query(
             `INSERT INTO supplier_products (supplier_id, supplier_code, product_id) VALUES ($1, $2, $3)
              ON CONFLICT (supplier_id, supplier_code) DO UPDATE SET product_id = EXCLUDED.product_id`,
             [invoice.supplier_id, item.supplier_code, item.product_id],
           )
         }
-        if (item.order_item_id) {
+        if (orderId && item.order_item_id) {
           await tx.query(`UPDATE purchase_order_items SET received_quantity = received_quantity + $2 WHERE id = $1`, [item.order_item_id, qty])
         }
       }
-      if (invoice.purchase_order_id) {
+      if (orderId) {
         await tx.query(
           `UPDATE purchase_orders SET status = CASE
              WHEN (SELECT bool_and(received_quantity >= quantity) FROM purchase_order_items WHERE order_id = $1) THEN 'recebido'
              ELSE 'recebido_parcial' END
            WHERE id = $1`,
-          [invoice.purchase_order_id],
+          [orderId],
         )
       }
-      await tx.query(`UPDATE invoices SET status = 'lancada', posted_at = now() WHERE id = $1`, [id])
 
-      // Contas a pagar: duplicatas do XML; sem duplicatas, uma parcela na data de emissão.
+      // Financeiro proporcional aos itens cuja TES gera financeiro.
+      const itemsTotal = items.reduce((sum: number, i: any) => sum + Number(i.total), 0)
+      const financialItems = items.reduce((sum: number, i: any) => sum + (i.generates_financial ? Number(i.total) : 0), 0)
+      const amount = itemsTotal > 0 ? round2(Number(invoice.total) * (financialItems / itemsTotal)) : 0
       const nfe = parseNfe(invoice.xml)
       const issueDate = (nfe.issueDate ?? '').slice(0, 10) || today()
       const company = await one(tx, `SELECT id FROM companies WHERE document = $1`, [invoice.recipient_document])
         ?? await one(tx, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`)
-      const total = round2(Number(invoice.total))
-      const parcels = nfe.duplicates.length ? nfe.duplicates.map((d) => ({ dueDate: d.dueDate, amount: round2(d.amount) })) : [{ dueDate: issueDate, amount: total }]
-      if (total > 0) {
-        await createTitles(tx, {
-          kind: 'P', companyId: company?.id ?? null, supplierId: invoice.supplier_id, categoryId: await categoryByCode(tx, '2.01'),
-          description: `Compra ${reference}`, document: reference, issueDate, parcels, invoiceId: id, userId: me.id,
-          notes: nfe.duplicates.length ? null : 'Nota sem duplicatas no XML: confira o vencimento',
-        })
+      let customerId: string | null = null
+      if (isReturn) customerId = await this.customerFromSupplier(tx, invoice.supplier_id)
+      if (amount > 0) {
+        if (isReturn) {
+          await createTitles(tx, {
+            kind: 'R', docType: 'NCC', companyId: company?.id ?? null, customerId, categoryId: await categoryByCode(tx, '2.08'),
+            description: `Crédito de devolução ${reference}`, document: reference, issueDate, parcels: [{ dueDate: issueDate, amount }],
+            invoiceId: id, userId: me.id, notes: 'NCC: crédito do cliente. Abate o que ele deve ou é devolvido em dinheiro.',
+          })
+        } else {
+          const useDuplicates = nfe.duplicates.length > 0 && Math.abs(financialItems - itemsTotal) < 0.005
+          await createTitles(tx, {
+            kind: 'P', docType: 'NF', companyId: company?.id ?? null, supplierId: invoice.supplier_id, categoryId: await categoryByCode(tx, '2.01'),
+            description: `Compra ${reference}`, document: reference, issueDate, invoiceId: id, userId: me.id,
+            parcels: useDuplicates ? nfe.duplicates.map((d) => ({ dueDate: d.dueDate, amount: round2(d.amount) })) : [{ dueDate: issueDate, amount }],
+            notes: useDuplicates ? null : 'Sem duplicatas aplicáveis no XML: confira o vencimento',
+          })
+        }
       }
+      await tx.query(`UPDATE invoices SET status = 'classificada', posted_at = now(), classified_by = $2, customer_id = $3 WHERE id = $1`, [id, me.id, customerId])
       return this.load(tx, id)
     })
+  }
+
+  // Nome antigo do endpoint (antes da pré-nota).
+  @Post(':id/post')
+  @HttpCode(200)
+  post(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.classify(me, id)
   }
 
   @Delete(':id')
@@ -279,8 +347,46 @@ export class InvoicesController {
 
   private async pending(tx: Tx, id: string) {
     const invoice = found(await one(tx, `SELECT * FROM invoices WHERE id = $1`, [id]), 'Nota não encontrada')
-    if (invoice.status !== 'pendente') throw new BadRequestException('Esta nota já foi lançada')
+    if (invoice.status !== 'pre_nota') throw new BadRequestException('Esta nota já foi classificada')
     return invoice
+  }
+
+  // Sugere a TES de cada item pela matriz fiscal (itens sem TES escolhida).
+  private async suggestTes(tx: Tx, invoiceId: string) {
+    const inv = (await one(
+      tx,
+      `SELECT i.operation_type_id, s.uf, (SELECT id FROM companies c WHERE c.document = i.recipient_document) AS company_id
+       FROM invoices i JOIN suppliers s ON s.id = i.supplier_id WHERE i.id = $1`,
+      [invoiceId],
+    ))!
+    if (!inv.operation_type_id) return
+    const fallbackUf = (await this.settings.company()).uf
+    const items = await tx.query(`SELECT id, product_id, tes_id FROM invoice_items WHERE invoice_id = $1`, [invoiceId])
+    for (const item of items) {
+      if (item.tes_id) {
+        // TES escolhida à mão: só completa o CFOP de entrada.
+        const r = await one(tx, `SELECT cfop_internal, cfop_interstate FROM tes WHERE id = $1`, [item.tes_id])
+        const companyUf = (await one(tx, `SELECT uf FROM companies WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY is_head DESC, code LIMIT 1`, [inv.company_id]))?.uf ?? fallbackUf
+        const cfop = inv.uf && inv.uf !== companyUf && r?.cfop_interstate ? r.cfop_interstate : r?.cfop_internal
+        await tx.query(`UPDATE invoice_items SET entry_cfop = $2 WHERE id = $1`, [item.id, cfop ?? null])
+        continue
+      }
+      const r = await resolveFiscal(tx, { operationTypeId: inv.operation_type_id, companyId: inv.company_id, uf: inv.uf, taxpayer: '1', productId: item.product_id }, fallbackUf)
+      await tx.query(`UPDATE invoice_items SET tes_id = $2, entry_cfop = $3 WHERE id = $1`, [item.id, r?.tes.id ?? null, r?.cfop ?? null])
+    }
+  }
+
+  // Devolução de venda: quem emitiu a nota é o cliente. Acha pelo CNPJ/CPF ou cadastra a partir do emitente.
+  private async customerFromSupplier(tx: Tx, supplierId: string) {
+    const s = (await one(tx, `SELECT cnpj, name, trade_name, email, phone, city, uf FROM suppliers WHERE id = $1`, [supplierId]))!
+    const existing = await one(tx, `SELECT id FROM customers WHERE document = $1`, [s.cnpj])
+    if (existing) return existing.id as string
+    const created = await one(
+      tx,
+      `INSERT INTO customers (document, name, trade_name, email, phone, city, uf, taxpayer) VALUES ($1, $2, $3, $4, $5, $6, $7, '1') RETURNING id`,
+      [s.cnpj, s.name, s.trade_name, s.email, s.phone, s.city, s.uf],
+    )
+    return created!.id as string
   }
 
   // Amarração automática, sem IA: código do fornecedor já conhecido, código de
@@ -361,8 +467,11 @@ export class InvoicesController {
                 i.posted_at AS "postedAt", i.created_at AS "createdAt", i.supplier_id AS "supplierId",
                 s.name AS "supplierName", s.cnpj AS "supplierCnpj", i.purchase_order_id AS "purchaseOrderId",
                 o.number AS "orderNumber", o.status AS "orderStatus", i.recipient_document AS "recipientDocument",
+                i.operation_type_id AS "operationTypeId", ot.code || ' · ' || ot.name AS "operationLabel", coalesce(ot.is_return, false) AS "isReturn",
+                cu.name AS "customerName", cb.name AS "classifiedBy",
                 (SELECT code || ' · ' || coalesce(trade_name, name) FROM companies c WHERE c.document = i.recipient_document) AS "companyLabel"
          FROM invoices i JOIN suppliers s ON s.id = i.supplier_id LEFT JOIN purchase_orders o ON o.id = i.purchase_order_id
+         LEFT JOIN operation_types ot ON ot.id = i.operation_type_id LEFT JOIN customers cu ON cu.id = i.customer_id LEFT JOIN users cb ON cb.id = i.classified_by
          WHERE i.id = $1`,
         [id],
       ),
@@ -373,9 +482,12 @@ export class InvoicesController {
         `SELECT ii.id, ii.item_number AS "itemNumber", ii.supplier_code AS "supplierCode", ii.ean, ii.description, ii.ncm, ii.cfop,
                 ii.unit, ii.quantity, ii.unit_price AS "unitPrice", ii.total, ii.product_id AS "productId", p.sku AS "productSku",
                 p.name AS "productName", p.unit AS "productUnit", ii.order_item_id AS "orderItemId", ii.match_source AS "matchSource",
-                ii.match_note AS "matchNote", oi.quantity - oi.received_quantity AS "orderOpenQuantity", oi.unit_price AS "orderUnitPrice"
+                ii.match_note AS "matchNote", oi.quantity - oi.received_quantity AS "orderOpenQuantity", oi.unit_price AS "orderUnitPrice",
+                ii.tes_id AS "tesId", t.code || ' · ' || t.description AS "tesLabel", ii.entry_cfop AS "entryCfop",
+                t.updates_stock AS "updatesStock", t.generates_financial AS "generatesFinancial"
          FROM invoice_items ii
          LEFT JOIN products p ON p.id = ii.product_id
+         LEFT JOIN tes t ON t.id = ii.tes_id
          LEFT JOIN purchase_order_items oi ON oi.id = ii.order_item_id
          WHERE ii.invoice_id = $1 ORDER BY ii.item_number`,
         [id],
@@ -393,8 +505,10 @@ export class InvoicesController {
         warnings.push(`Item ${i.itemNumber}: unidade da nota (${i.unit}) diferente da do produto (${i.productUnit})`)
       }
     }
-    if (invoice.status === 'pendente' && !invoice.purchaseOrderId) warnings.push('Nota sem pedido de compra vinculado')
-    if (invoice.status === 'pendente' && invoice.recipientDocument && !invoice.companyLabel) {
+    const pre = invoice.status === 'pre_nota'
+    if (pre && !invoice.purchaseOrderId && !invoice.isReturn) warnings.push('Nota sem pedido de compra vinculado')
+    if (pre && items.some((i: any) => !i.tesId)) warnings.push('Há itens sem TES: escolha a TES ou cadastre a regra na matriz fiscal')
+    if (pre && invoice.recipientDocument && !invoice.companyLabel) {
       const [{ n }] = await tx.query(`SELECT count(*)::int AS n FROM companies`)
       if (n > 0) warnings.push(`O destinatário da nota (CNPJ ${invoice.recipientDocument}) não é nenhuma das suas empresas cadastradas`)
     }
@@ -415,10 +529,28 @@ export class InvoicesController {
         ).map((o: any) => numbers(o, 'quantity', 'receivedQuantity', 'unitPrice'))
       : []
 
+    const titles = (
+      await tx.query(
+        `SELECT id, kind, doc_type AS "docType", installment, installments, due_date::text AS "dueDate", amount, paid_amount AS "paidAmount", status
+         FROM financial_titles WHERE invoice_id = $1 ORDER BY installment`,
+        [id],
+      )
+    ).map((t: any) => numbers(t, 'amount', 'paidAmount'))
+    // O que a classificação vai fazer (para o fiscal conferir antes).
+    const itemsTotal = items.reduce((s: number, i: any) => s + i.total, 0)
+    const financialItems = items.reduce((s: number, i: any) => s + (i.generatesFinancial ? i.total : 0), 0)
+    const preview = {
+      stockItems: items.filter((i: any) => i.updatesStock).length,
+      financialAmount: itemsTotal > 0 ? Math.round(Number(invoice.total) * (financialItems / itemsTotal) * 100) / 100 : 0,
+      financialKind: invoice.isReturn ? 'NCC' : 'pagar',
+      duplicates: invoice.isReturn || Math.abs(financialItems - itemsTotal) >= 0.005 ? 0 : parseNfe((await one(tx, `SELECT xml FROM invoices WHERE id = $1`, [id]))!.xml).duplicates.length,
+    }
     return {
       ...numbers(invoice, 'total'),
       orderCode: invoice.orderNumber ? code('PC', invoice.orderNumber) : null,
       items,
+      titles,
+      preview,
       warnings,
       orders,
       orderItems,

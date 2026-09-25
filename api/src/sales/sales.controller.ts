@@ -200,13 +200,22 @@ export class SalesController {
       // Contas a receber proporcionais aos itens que geram financeiro (frete e desconto entram no rateio).
       const financialShare = items.reduce((s: number, it: any, i: number) => s + (resolved[i]!.generatesFinancial ? Number(it.total) : 0), 0)
       const receivable = productsTotal > 0 ? round2(Number(order.total) * (financialShare / productsTotal)) : 0
-      if (receivable > 0) {
+      const operation = (await one(tx, `SELECT is_return FROM operation_types WHERE id = $1`, [order.operation_type_id]))!
+      if (receivable > 0 && operation.is_return) {
+        // Devolução de compra: o fornecedor passa a dever (NDF), abatendo o contas a pagar dele.
+        await createTitles(tx, {
+          kind: 'P', docType: 'NDF', companyId: order.company_id, supplierId: await this.supplierFromCustomer(tx, order.customer_id),
+          categoryId: await categoryByCode(tx, '1.04'), description: `Débito de devolução ${reference} · ${customer.name}`, document: reference,
+          issueDate: today(), parcels: [{ amount: receivable, dueDate: today() }], salesInvoiceId: invoice.id, userId: me.id,
+          notes: 'NDF: débito do fornecedor. Abate o que você deve a ele ou é recebido em dinheiro.',
+        })
+      } else if (receivable > 0) {
         const term = (await one(tx, `SELECT days FROM payment_terms WHERE id = $1`, [order.payment_term_id]))!
         const days = termDays(term.days)
         const issue = today()
         const amounts = splitAmount(receivable, days.length || 1)
         await createTitles(tx, {
-          kind: 'R', companyId: order.company_id, customerId: order.customer_id, categoryId: await categoryByCode(tx, '1.01'),
+          kind: 'R', docType: 'NF', companyId: order.company_id, customerId: order.customer_id, categoryId: await categoryByCode(tx, '1.01'),
           description: `Venda ${reference} · ${customer.name}`, document: reference, issueDate: issue,
           parcels: amounts.map((amount, i) => ({ amount, dueDate: addDays(issue, days[i] ?? 0) })), salesInvoiceId: invoice.id, userId: me.id,
         })
@@ -277,6 +286,19 @@ export class SalesController {
   private companyMissing = (error: any) => {
     if (error?.column === 'company_id' || /company_id/.test(String(error?.message))) throw new BadRequestException('Cadastre a empresa em Cadastros › Empresas antes de vender')
     throw error
+  }
+
+  // Devolução de compra: o destinatário é o fornecedor. Acha pelo CNPJ ou cadastra a partir do cliente.
+  private async supplierFromCustomer(tx: Tx, customerId: string) {
+    const c = (await one(tx, `SELECT document, name, trade_name, email, phone, city, uf FROM customers WHERE id = $1`, [customerId]))!
+    const existing = await one(tx, `SELECT id FROM suppliers WHERE cnpj = $1`, [c.document])
+    if (existing) return existing.id as string
+    const created = await one(
+      tx,
+      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [c.document, c.name, c.trade_name, c.email, c.phone, c.city, c.uf],
+    )
+    return created!.id as string
   }
 
   private async editable(tx: Tx, id: string, me: User) {
@@ -383,7 +405,7 @@ export class SalesController {
       [id],
     )
     const titles = await db.query(
-      `SELECT id, installment, installments, due_date::text AS "dueDate", amount, paid_amount AS "paidAmount", status FROM financial_titles WHERE sales_invoice_id = $1 ORDER BY installment`,
+      `SELECT id, kind, doc_type AS "docType", installment, installments, due_date::text AS "dueDate", amount, paid_amount AS "paidAmount", status FROM financial_titles WHERE sales_invoice_id = $1 ORDER BY installment`,
       [id],
     )
     return {

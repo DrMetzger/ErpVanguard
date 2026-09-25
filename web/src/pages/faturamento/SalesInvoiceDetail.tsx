@@ -82,7 +82,7 @@ export default function SalesInvoiceDetail() {
       </Card>
 
       <Card>
-        <Text fw={700} mb="sm">Parcelas (contas a receber)</Text>
+        <Text fw={700} mb="sm">{nf.titles[0]?.docType === 'NDF' ? 'Débito do fornecedor (NDF, no contas a pagar)' : 'Parcelas (contas a receber)'}</Text>
         {nf.titles.length === 0 ? <Text size="sm" c="dimmed">Esta operação não gera financeiro.</Text> : (
           <Table>
             <Table.Thead><Table.Tr><Table.Th>Parcela</Table.Th><Table.Th>Vencimento</Table.Th><Table.Th ta="right">Valor</Table.Th><Table.Th ta="right">Recebido</Table.Th><Table.Th>Situação</Table.Th></Table.Tr></Table.Thead>

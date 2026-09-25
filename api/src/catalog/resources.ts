@@ -176,6 +176,7 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 4, upper: true, list: true },
       { key: 'name', column: 'name', label: 'Nome', type: 'text', required: true, max: 120, list: true, span: 2 },
       { key: 'kind', column: 'kind', label: 'Entrada/Saída', type: 'enum', options: KIND, required: true, list: true },
+      { key: 'isReturn', column: 'is_return', label: 'É devolução', type: 'bool', default: false, list: true, help: 'Devolução de venda gera crédito ao cliente (NCC); de compra, débito do fornecedor (NDF)' },
       active,
     ],
   },

@@ -54,6 +54,7 @@ const mk = (name, permissions) => call(admin, 'POST', '/users', { name, email: `
 const users = {
   joao: await mk('Joao', ['solicitante']),
   maria: await mk('Maria', ['comprador', 'solicitante']),
+  fiscal: await mk('Fabio', ['fiscal']),
   carlos: await mk('Carlos', ['aprovador']),
   diretora: await mk('Diretora', ['aprovador']),
 }
@@ -155,13 +156,18 @@ await call(t.maria, 'POST', '/invoices/import', { xml }, 409)
 await call(t.maria, 'POST', '/invoices/import', { xml: '<nada/>' }, 400)
 ok('XML importado: pedido achado pelo xPed e "PARAF SEXT 5MM ZB" ligado ao parafuso; nota repetida recusada')
 
-nf = await call(t.maria, 'POST', `/invoices/${nf.id}/post`)
-assert.equal(nf.status, 'lancada')
+assert.equal(nf.status, 'pre_nota')
+assert.equal(nf.items[0].tesLabel?.slice(0, 3), '001', 'TES de compra sugerida pela matriz')
+assert.equal(Number((await call(admin, 'GET', `/products/${p1.id}`)).stock), stockBefore, 'pré-nota não mexe no estoque')
+await call(t.maria, 'POST', `/invoices/${nf.id}/classify`, undefined, 403)
+nf = await call(t.fiscal, 'POST', `/invoices/${nf.id}/classify`)
+assert.equal(nf.status, 'classificada')
+assert.ok(nf.titles.length >= 1 && nf.titles.every((x) => x.kind === 'P' && x.docType === 'NF'), 'contas a pagar')
 const p1After = await call(admin, 'GET', `/products/${p1.id}`)
 assert.equal(p1After.stock, stockBefore + 1000)
 assert.ok(Math.abs(p1After.costPrice - (100 * 0.1 + 1000 * 0.12) / 1100) < 1e-4, `custo médio ${p1After.costPrice}`)
 assert.equal((await call(t.maria, 'GET', `/purchase-orders/${oA.id}`)).status, 'recebido')
-ok(`nota lançada: estoque ${stockBefore} → ${p1After.stock}, custo médio ${p1After.costPrice.toFixed(4)}, pedido recebido`)
+ok(`pré-nota classificada pelo fiscal (comprador não classifica): estoque ${stockBefore} → ${p1After.stock}, custo médio ${p1After.costPrice.toFixed(4)}, pedido recebido`)
 
 // Segunda nota do mesmo fornecedor: amarração aprendida, sem pedido em aberto
 const nf2 = await call(t.maria, 'POST', '/invoices/import', { xml: nfeXml({ key: key44(), number: '1300', emitCnpj: sA.cnpj, emitName: sA.name, items: [
@@ -170,7 +176,7 @@ const nf2 = await call(t.maria, 'POST', '/invoices/import', { xml: nfeXml({ key:
 assert.equal(nf2.items[0].productId, p1.id); assert.equal(nf2.items[0].matchSource, 'amarracao')
 assert.equal(nf2.items[1].productId, null)
 assert.ok(nf2.warnings.some((w) => w.includes('sem pedido')))
-await call(t.maria, 'POST', `/invoices/${nf2.id}/post`, undefined, 400)
+await call(t.fiscal, 'POST', `/invoices/${nf2.id}/classify`, undefined, 400)
 const aiRes = await fetch(`${API}/invoices/${nf2.id}/ai-match`, { method: 'POST', headers: { Authorization: `Bearer ${t.maria}` } })
 if (nf2.aiEnabled) assert.ok(aiRes.status < 500); else assert.equal(aiRes.status, 503)
 await call(t.maria, 'PUT', `/invoices/${nf2.id}`, { items: [{ id: nf2.items[1].id, productId: p2.id }] })

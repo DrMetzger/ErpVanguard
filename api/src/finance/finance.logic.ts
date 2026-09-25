@@ -33,6 +33,8 @@ export const termDays = (days: string) => days.split('/').map(Number).filter((n)
 
 export interface NewTitle {
   kind: 'R' | 'P'
+  // NF: nota fiscal · NCC: crédito do cliente (devolução de venda) · NDF: débito do fornecedor (devolução de compra) · OUT: manual
+  docType?: 'NF' | 'NCC' | 'NDF' | 'OUT'
   companyId: string | null
   customerId?: string | null
   supplierId?: string | null
@@ -53,15 +55,21 @@ export async function createTitles(tx: Db, t: NewTitle) {
     const row = await one(
       tx,
       `INSERT INTO financial_titles (kind, company_id, customer_id, supplier_id, category_id, description, document, installment, installments,
-                                     issue_date, due_date, amount, sales_invoice_id, invoice_id, notes, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+                                     issue_date, due_date, amount, sales_invoice_id, invoice_id, notes, created_by, doc_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
       [t.kind, t.companyId, t.customerId ?? null, t.supplierId ?? null, t.categoryId, t.description, t.document ?? null, i + 1, t.parcels.length,
-        t.issueDate, parcel.dueDate, parcel.amount, t.salesInvoiceId ?? null, t.invoiceId ?? null, t.notes ?? null, t.userId],
+        t.issueDate, parcel.dueDate, parcel.amount, t.salesInvoiceId ?? null, t.invoiceId ?? null, t.notes ?? null, t.userId, t.docType ?? 'OUT'],
     )
     ids.push(row!.id)
   }
   return ids
 }
+
+// Título de crédito (NCC/NDF) tem o sinal invertido: NCC é dinheiro que sai, NDF é dinheiro que entra.
+// SQL que vale 1 quando o título (alias t) é entrada de dinheiro e -1 quando é saída.
+export const CASH_SIGN = (t = 't') => `(CASE WHEN (${t}.kind = 'R') = (${t}.doc_type NOT IN ('NCC', 'NDF')) THEN 1 ELSE -1 END)`
+// SQL que vale -1 para títulos de crédito (abatem o saldo do seu lado).
+export const BALANCE_SIGN = (t = 't') => `(CASE WHEN ${t}.doc_type IN ('NCC', 'NDF') THEN -1 ELSE 1 END)`
 
 export const categoryByCode = async (db: Db, code: string) => (await one(db, `SELECT id FROM finance_categories WHERE code = $1`, [code]))?.id ?? null
 

@@ -190,6 +190,11 @@ export interface InvoiceItem {
   orderItemId: string | null
   matchSource: string | null
   matchNote: string | null
+  tesId: string | null
+  tesLabel: string | null
+  entryCfop: string | null
+  updatesStock: boolean | null
+  generatesFinancial: boolean | null
 }
 
 export interface Invoice {
@@ -213,6 +218,13 @@ export interface Invoice {
   orders: { id: string; code: string; total: number }[]
   orderItems: { id: string; description: string; quantity: number; receivedQuantity: number }[]
   aiEnabled: boolean
+  operationTypeId: string | null
+  operationLabel: string | null
+  isReturn: boolean
+  customerName: string | null
+  classifiedBy: string | null
+  titles: { id: string; kind: 'R' | 'P'; docType: string; installment: number; installments: number; dueDate: string; amount: number; paidAmount: number; status: string }[]
+  preview: { stockItems: number; financialAmount: number; financialKind: 'NCC' | 'pagar'; duplicates: number }
 }
 
 export interface Notice {

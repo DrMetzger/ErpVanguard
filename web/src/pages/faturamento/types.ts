@@ -22,5 +22,5 @@ export interface SalesInvoice {
   customerName: string; customerDocument: string; customerIe: string | null; customerStreet: string | null; customerNumber: string | null
   customerDistrict: string | null; customerCity: string | null; customerUf: string | null; customerZip: string | null
   items: { itemNumber: number; sku: string; description: string; ncm: string | null; unit: string; cfop: string; tesCode: string; quantity: number; unitPrice: number; total: number }[]
-  titles: { id: string; installment: number; installments: number; dueDate: string; amount: number; paidAmount: number; status: string }[]
+  titles: { id: string; kind: 'R' | 'P'; docType: string; installment: number; installments: number; dueDate: string; amount: number; paidAmount: number; status: string }[]
 }

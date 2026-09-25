@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { requirePermission } from '../common/access'
 import { numbers } from '../common/db'
-import { addMonths, round2, today } from '../finance/finance.logic'
+import { addMonths, BALANCE_SIGN, CASH_SIGN, round2, today } from '../finance/finance.logic'
 import type { User } from '../users/user.entity'
 
 class Period {
@@ -14,6 +14,8 @@ class Period {
 }
 
 const BR = `AT TIME ZONE 'America/Sao_Paulo'`
+// Só vendas: notas de devolução (tipo de operação marcado como devolução) não são faturamento.
+const SALE = `NOT EXISTS (SELECT 1 FROM operation_types ot WHERE ot.id = i.operation_type_id AND ot.is_return)`
 const pct = (part: number, whole: number) => (whole ? round2((part / whole) * 100) : 0)
 
 // BI: vendas, margem, compras, financeiro e estoque. Datas pelo horário de Brasília.
@@ -32,27 +34,28 @@ export class BiController {
     // Itens das notas de saída emitidas no período
     const salesItems = `
       FROM sales_invoice_items ii JOIN sales_invoices i ON i.id = ii.invoice_id
-      WHERE i.status = 'emitida' AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3)`
+      WHERE i.status = 'emitida' AND ${SALE} AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3)`
 
     const [sales] = await this.db.query(
       `SELECT coalesce(sum(total), 0) AS revenue, count(*)::int AS invoices,
               coalesce((SELECT sum(ii.quantity * ii.unit_cost) ${salesItems}), 0) AS cost,
               coalesce((SELECT sum(ii.total) ${salesItems}), 0) AS "productsRevenue",
               count(DISTINCT customer_id)::int AS customers
-       FROM sales_invoices i WHERE i.status = 'emitida' AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3)`,
+       FROM sales_invoices i WHERE i.status = 'emitida' AND ${SALE} AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3)`,
       args,
     )
     const [purchases] = await this.db.query(
       `SELECT coalesce(sum(total), 0) AS total, count(*)::int AS invoices FROM invoices
-       WHERE status = 'lancada' AND (posted_at ${BR})::date BETWEEN $1 AND $2`,
+       WHERE status = 'classificada' AND NOT EXISTS (SELECT 1 FROM operation_types ot WHERE ot.id = invoices.operation_type_id AND ot.is_return) AND (posted_at ${BR})::date BETWEEN $1 AND $2`,
       [from, to],
     )
     const [fin] = await this.db.query(
-      `SELECT coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'R'), 0) AS receivable,
-              coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'R' AND due_date < (now() ${BR})::date), 0) AS "receivableOverdue",
-              coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'P'), 0) AS payable,
-              coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'P' AND due_date < (now() ${BR})::date), 0) AS "payableOverdue"
-       FROM financial_titles WHERE status IN ('aberto', 'parcial') AND ($1::uuid IS NULL OR company_id = $1)`,
+      `SELECT coalesce(sum(bal) FILTER (WHERE kind = 'R'), 0) AS receivable,
+              coalesce(sum(bal) FILTER (WHERE kind = 'R' AND due_date < (now() ${BR})::date), 0) AS "receivableOverdue",
+              coalesce(sum(bal) FILTER (WHERE kind = 'P'), 0) AS payable,
+              coalesce(sum(bal) FILTER (WHERE kind = 'P' AND due_date < (now() ${BR})::date), 0) AS "payableOverdue"
+       FROM (SELECT t.kind, t.due_date, (t.amount - t.paid_amount) * ${BALANCE_SIGN()} AS bal FROM financial_titles t
+             WHERE t.status IN ('aberto', 'parcial') AND ($1::uuid IS NULL OR t.company_id = $1)) titles`,
       [company],
     )
     const [stock] = await this.db.query(
@@ -65,11 +68,11 @@ export class BiController {
     const monthly = await this.db.query(
       `WITH months AS (SELECT to_char(m, 'YYYY-MM') AS month FROM generate_series(date_trunc('month', $1::date), date_trunc('month', $2::date), interval '1 month') m),
        s AS (SELECT to_char(i.issued_at ${BR}, 'YYYY-MM') AS month, sum(i.total) AS revenue FROM sales_invoices i
-             WHERE i.status = 'emitida' AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3) GROUP BY 1),
+             WHERE i.status = 'emitida' AND ${SALE} AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3) GROUP BY 1),
        c AS (SELECT to_char(i.issued_at ${BR}, 'YYYY-MM') AS month, sum(ii.quantity * ii.unit_cost) AS cost ${salesItems} GROUP BY 1),
        p AS (SELECT to_char(posted_at ${BR}, 'YYYY-MM') AS month, sum(total) AS purchases FROM invoices
-             WHERE status = 'lancada' AND (posted_at ${BR})::date BETWEEN $1 AND $2 GROUP BY 1),
-       f AS (SELECT to_char(pay.paid_at, 'YYYY-MM') AS month, sum(pay.amount) FILTER (WHERE t.kind = 'R') AS received, sum(pay.amount) FILTER (WHERE t.kind = 'P') AS paid
+             WHERE status = 'classificada' AND NOT EXISTS (SELECT 1 FROM operation_types ot WHERE ot.id = invoices.operation_type_id AND ot.is_return) AND (posted_at ${BR})::date BETWEEN $1 AND $2 GROUP BY 1),
+       f AS (SELECT to_char(pay.paid_at, 'YYYY-MM') AS month, sum(pay.amount) FILTER (WHERE ${CASH_SIGN()} = 1) AS received, sum(pay.amount) FILTER (WHERE ${CASH_SIGN()} = -1) AS paid
              FROM financial_payments pay JOIN financial_titles t ON t.id = pay.title_id
              WHERE pay.paid_at BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR t.company_id = $3) GROUP BY 1)
        SELECT months.month, coalesce(s.revenue, 0) AS revenue, coalesce(c.cost, 0) AS cost, coalesce(p.purchases, 0) AS purchases,
@@ -100,7 +103,7 @@ export class BiController {
     const group = async (label: string, joins: string, key: string) =>
       (await this.db.query(
         `SELECT ${key} AS label, sum(i.total) AS revenue, count(*)::int AS invoices FROM sales_invoices i ${joins}
-         WHERE i.status = 'emitida' AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3)
+         WHERE i.status = 'emitida' AND ${SALE} AND (i.issued_at ${BR})::date BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR i.company_id = $3)
          GROUP BY 1 ORDER BY 2 DESC LIMIT ${label === 'uf' ? 27 : 10}`,
         args,
       )).map((r: any) => numbers(r, 'revenue'))

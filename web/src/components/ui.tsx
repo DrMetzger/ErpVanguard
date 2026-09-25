@@ -11,7 +11,7 @@ const STATUS: Record<string, [string, string]> = {
   pendente: ['Pendente', 'brand'], cotacao: ['Em cotação', 'yellow'], pedido: ['Pedido gerado', 'teal'], cancelado: ['Cancelado', 'gray'],
   finalizada: ['Finalizada', 'teal'], aguardando_aprovacao: ['Aguardando aprovação', 'yellow'], aprovado: ['Aprovado', 'teal'],
   reprovado: ['Reprovado', 'red'], orcamento: ['Orçamento', 'brand'], faturado: ['Faturado', 'teal'], emitida: ['Emitida', 'teal'],
-  aberto: ['Em aberto', 'brand'], parcial: ['Pago parcial', 'cyan'], pago: ['Pago', 'teal'], vencido: ['Vencido', 'red'], recebido_parcial: ['Recebido parcial', 'cyan'], recebido: ['Recebido', 'teal'], lancada: ['Lançada', 'teal'],
+  aberto: ['Em aberto', 'brand'], parcial: ['Pago parcial', 'cyan'], pago: ['Pago', 'teal'], vencido: ['Vencido', 'red'], recebido_parcial: ['Recebido parcial', 'cyan'], recebido: ['Recebido', 'teal'], lancada: ['Lançada', 'teal'], pre_nota: ['Pré-nota', 'yellow'], classificada: ['Classificada', 'teal'],
 }
 
 export function Status({ value }: { value: string }) {

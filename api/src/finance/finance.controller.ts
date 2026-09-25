@@ -7,7 +7,7 @@ import { requirePermission } from '../common/access'
 import { numbers, one } from '../common/db'
 import { found } from '../purchasing/purchasing.helpers'
 import type { User } from '../users/user.entity'
-import { addDays, addMonths, createTitles, recalcTitle, round2, splitAmount, today } from './finance.logic'
+import { addDays, addMonths, BALANCE_SIGN, CASH_SIGN, createTitles, recalcTitle, round2, splitAmount, today } from './finance.logic'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -59,7 +59,7 @@ class FlowQuery {
 }
 
 const TITLE_SELECT = `
-  SELECT t.id, t.kind, t.description, t.document, t.installment, t.installments, t.issue_date::text AS "issueDate", t.due_date::text AS "dueDate",
+  SELECT t.id, t.kind, t.doc_type AS "docType", t.description, t.document, t.installment, t.installments, t.issue_date::text AS "issueDate", t.due_date::text AS "dueDate",
          t.amount, t.paid_amount AS "paidAmount", t.amount - t.paid_amount AS balance, t.status, t.notes, t.created_at AS "createdAt",
          t.customer_id AS "customerId", t.supplier_id AS "supplierId", coalesce(c.name, s.name) AS partner, coalesce(c.document, s.cnpj) AS "partnerDocument",
          t.category_id AS "categoryId", fc.code || ' · ' || fc.name AS category, t.company_id AS "companyId", co.code || ' · ' || coalesce(co.trade_name, co.name) AS company,
@@ -184,14 +184,15 @@ export class FinanceController {
     requirePermission(me, 'financeiro')
     const [t] = await this.db.query(
       `SELECT
-         coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'R'), 0) AS "receivable",
-         coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'R' AND due_date < d), 0) AS "receivableOverdue",
-         coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'R' AND due_date BETWEEN d AND d + 7), 0) AS "receivableWeek",
-         coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'P'), 0) AS "payable",
-         coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'P' AND due_date < d), 0) AS "payableOverdue",
-         coalesce(sum(amount - paid_amount) FILTER (WHERE kind = 'P' AND due_date BETWEEN d AND d + 7), 0) AS "payableWeek"
-       FROM financial_titles, (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d) today
-       WHERE status IN ('aberto', 'parcial')`,
+         coalesce(sum(bal) FILTER (WHERE kind = 'R'), 0) AS "receivable",
+         coalesce(sum(bal) FILTER (WHERE kind = 'R' AND due_date < d), 0) AS "receivableOverdue",
+         coalesce(sum(bal) FILTER (WHERE kind = 'R' AND due_date BETWEEN d AND d + 7), 0) AS "receivableWeek",
+         coalesce(sum(bal) FILTER (WHERE kind = 'P'), 0) AS "payable",
+         coalesce(sum(bal) FILTER (WHERE kind = 'P' AND due_date < d), 0) AS "payableOverdue",
+         coalesce(sum(bal) FILTER (WHERE kind = 'P' AND due_date BETWEEN d AND d + 7), 0) AS "payableWeek"
+       FROM (SELECT t.kind, t.due_date, (t.amount - t.paid_amount) * ${BALANCE_SIGN()} AS bal FROM financial_titles t WHERE t.status IN ('aberto', 'parcial')) titles,
+            (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d) today
+       WHERE true`,
     )
     const accounts = await this.balances()
     return { ...numbers(t, 'receivable', 'receivableOverdue', 'receivableWeek', 'payable', 'payableOverdue', 'payableWeek'), accounts, cash: round2(accounts.reduce((s, a) => s + a.balance, 0)) }
@@ -214,19 +215,20 @@ export class FinanceController {
     const account = q.bankAccountId ?? null
     const [opening] = await this.db.query(
       `SELECT coalesce((SELECT sum(opening_balance) FROM bank_accounts WHERE active AND ($2::uuid IS NULL OR id = $2)), 0)
-            + coalesce((SELECT sum(CASE t.kind WHEN 'R' THEN p.amount ELSE -p.amount END) FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id
+            + coalesce((SELECT sum(p.amount * ${CASH_SIGN()}) FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id
                         WHERE p.paid_at < $1 AND ($2::uuid IS NULL OR p.bank_account_id = $2)), 0) AS balance`,
       [from, account],
     )
     const realized = await this.db.query(
-      `SELECT p.paid_at::text AS day, sum(p.amount) FILTER (WHERE t.kind = 'R') AS "in", sum(p.amount) FILTER (WHERE t.kind = 'P') AS "out"
+      `SELECT p.paid_at::text AS day, sum(p.amount) FILTER (WHERE ${CASH_SIGN()} = 1) AS "in", sum(p.amount) FILTER (WHERE ${CASH_SIGN()} = -1) AS "out"
        FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id
        WHERE p.paid_at BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR p.bank_account_id = $3) GROUP BY 1`,
       [from, to, account],
     )
     const projected = await this.db.query(
-      `SELECT greatest(due_date, $1::date)::text AS day, sum(amount - paid_amount) FILTER (WHERE kind = 'R') AS "in", sum(amount - paid_amount) FILTER (WHERE kind = 'P') AS "out"
-       FROM financial_titles WHERE status IN ('aberto', 'parcial') AND due_date <= $2 AND greatest(due_date, (now() AT TIME ZONE 'America/Sao_Paulo')::date) >= $1 GROUP BY 1`,
+      `SELECT greatest(t.due_date, $1::date)::text AS day, sum(t.amount - t.paid_amount) FILTER (WHERE ${CASH_SIGN()} = 1) AS "in",
+              sum(t.amount - t.paid_amount) FILTER (WHERE ${CASH_SIGN()} = -1) AS "out"
+       FROM financial_titles t WHERE t.status IN ('aberto', 'parcial') AND t.due_date <= $2 AND greatest(t.due_date, (now() AT TIME ZONE 'America/Sao_Paulo')::date) >= $1 GROUP BY 1`,
       [from, to],
     )
     const byDay = (rows: any[]) => new Map(rows.map((r) => [r.day, { in: Number(r.in ?? 0), out: Number(r.out ?? 0) }]))
@@ -246,7 +248,7 @@ export class FinanceController {
   private async balances() {
     const rows = await this.db.query(
       `SELECT a.id, a.code, a.name, a.kind, a.bank_code AS "bankCode",
-              a.opening_balance + coalesce((SELECT sum(CASE t.kind WHEN 'R' THEN p.amount ELSE -p.amount END)
+              a.opening_balance + coalesce((SELECT sum(p.amount * ${CASH_SIGN()})
                                             FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id WHERE p.bank_account_id = a.id), 0) AS balance
        FROM bank_accounts a WHERE a.active ORDER BY a.code`,
     )

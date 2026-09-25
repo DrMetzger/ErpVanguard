@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Anchor, Badge, Button, Card, Drawer, Group, Menu, Modal, NumberInput, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput, Textarea } from '@mantine/core'
+import { ActionIcon, Alert, Anchor, Badge, Button, Card, Drawer, Group, Menu, Modal, NumberInput, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput, Textarea, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { IconArrowBackUp, IconCash, IconDots, IconEdit, IconPlus, IconSearch, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
@@ -12,6 +12,11 @@ import { useAction, useApi } from '../../lib/hooks'
 import type { Summary, Title } from './types'
 
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+// Títulos de crédito: abatem o saldo do lado em que estão.
+const CREDIT: Record<string, [string, string] | undefined> = {
+  NCC: ['Crédito do cliente', 'Devolução de venda: você deve ao cliente. Abate o que ele deve ou é devolvido em dinheiro (a baixa é uma saída).'],
+  NDF: ['Débito do fornecedor', 'Devolução de compra: o fornecedor deve a você. Abate o que você deve a ele ou é recebido em dinheiro (a baixa é uma entrada).'],
+}
 const STATUS = [{ value: 'aberto', label: 'Em aberto' }, { value: 'vencido', label: 'Vencidos' }, { value: 'pago', label: 'Pagos' }, { value: 'cancelado', label: 'Cancelados' }, { value: 'todos', label: 'Todos' }]
 
 function Tile({ label, value, tone }: { label: string; value: number | undefined; tone?: 'red' }) {
@@ -74,15 +79,18 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
                   <Table.Tr key={t.id}>
                     <Table.Td>{date(t.dueDate)}{t.daysOverdue > 0 && <Text size="xs" c="red">{t.daysOverdue} dia(s) em atraso</Text>}</Table.Td>
                     <Table.Td>{t.partner ?? <Text span c="dimmed">—</Text>}</Table.Td>
-                    <Table.Td><Anchor component="button" size="sm" onClick={() => open(t)}>{t.description}</Anchor>{t.document && <Text size="xs" c="dimmed">{t.document}</Text>}</Table.Td>
+                    <Table.Td>
+                      <Group gap={6} wrap="nowrap"><Anchor component="button" size="sm" onClick={() => open(t)}>{t.description}</Anchor>{CREDIT[t.docType] && <Tooltip label={CREDIT[t.docType]![1]}><Badge size="sm" color="orange" variant="light" radius="sm">{t.docType}</Badge></Tooltip>}</Group>
+                      {t.document && <Text size="xs" c="dimmed">{t.document}</Text>}
+                    </Table.Td>
                     <Table.Td>{t.installment}/{t.installments}</Table.Td>
                     <Table.Td><Text size="sm">{t.category ?? '—'}</Text></Table.Td>
                     <Table.Td ta="right">{money(t.amount)}</Table.Td>
-                    <Table.Td ta="right" fw={600}>{money(t.balance)}</Table.Td>
+                    <Table.Td ta="right" fw={600} c={CREDIT[t.docType] ? 'orange' : undefined}>{CREDIT[t.docType] ? '− ' : ''}{money(t.balance)}</Table.Td>
                     <Table.Td>{t.daysOverdue > 0 ? <Status value="vencido" /> : <Status value={t.status} />}</Table.Td>
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        {['aberto', 'parcial'].includes(t.status) && <Button size="compact-sm" variant="light" leftSection={<IconCash size={14} />} onClick={() => setPaying(t)}>{R ? 'Receber' : 'Pagar'}</Button>}
+                        {['aberto', 'parcial'].includes(t.status) && <Button size="compact-sm" variant="light" leftSection={<IconCash size={14} />} onClick={() => setPaying(t)}>{CREDIT[t.docType] ? 'Baixar' : R ? 'Receber' : 'Pagar'}</Button>}
                         <Menu position="bottom-end" withinPortal>
                           <Menu.Target><ActionIcon variant="subtle" aria-label="Mais ações"><IconDots size={16} /></ActionIcon></Menu.Target>
                           <Menu.Dropdown>
@@ -115,7 +123,7 @@ function PayModal({ title, onClose, onDone }: { title: Title; onClose: () => voi
   const accounts = useOptions('bank-accounts')
   const [form, setForm] = useState({ bankAccountId: null as string | null, paidAt: today(), amount: title.balance, discount: 0, interest: 0, notes: '' })
   const { busy, run } = useAction()
-  const R = title.kind === 'R'
+  const R = (title.kind === 'R') !== !!CREDIT[title.docType]
   const settles = Math.round(((form.amount || 0) + (form.discount || 0) - (form.interest || 0)) * 100) / 100
   const submit = () => run(async () => { await api(`/finance/titles/${title.id}/pay`, { method: 'POST', body: { ...form, notes: form.notes || undefined } }); onDone() }, R ? 'Recebimento baixado' : 'Pagamento baixado')
   return (

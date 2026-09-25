@@ -169,10 +169,69 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.po
 </infNFe></NFe><protNFe><infProt><chNFe>${key}</chNFe></infProt></protNFe></nfeProc>`
 const imported = await call(tComp, 'POST', '/invoices/import', { xml })
 await call(tComp, 'PUT', `/invoices/${imported.id}`, { items: [{ id: imported.items[0].id, productId: prodB.id }] })
-await call(tComp, 'POST', `/invoices/${imported.id}/post`)
+await call(tComp, 'POST', `/invoices/${imported.id}/classify`)
 const payables = await call(tFin, 'GET', `/finance/titles?kind=P&q=${encodeURIComponent('Distribuidora ' + run)}`)
 assert.deepEqual(payables.map((p) => [p.dueDate, p.amount]), [[plus(28), 100], [plus(56), 100]])
 ok('NF-e de compra lançada virou contas a pagar pelas duplicatas do XML (2 × R$ 100)')
+
+// ---- Pré-nota e classificação fiscal pela TES
+const tFis = await user('Fiscal', ['fiscal'])
+const ops = await call(admin, 'GET', '/catalog/operation-types')
+const opE01 = ops.find((o) => o.code === 'E01'), opE05 = ops.find((o) => o.code === 'E05'), opS03 = ops.find((o) => o.code === 'S03')
+assert.equal(opE05.isReturn, true)
+const tesNo = await call(tFis, 'POST', '/catalog/tes', { code: String(300 + Math.floor(Math.random() * 99)), kind: 'E', description: 'Remessa para conserto ' + run, cfopInternal: '1915', cfopInterstate: '2915', updatesStock: false, generatesFinancial: false })
+const mkXml = (emit, name, nNF, items, dups = '') => {
+  const k = ('3526' + '09' + emit + '55001' + String(Math.floor(Math.random() * 1e9)).padStart(9, '0') + '1' + String(Math.floor(Math.random() * 1e8)).padStart(8, '0')).slice(0, 44).padEnd(44, '0')
+  const tot = items.reduce((a, i) => a + i.qty * i.price, 0).toFixed(2)
+  return `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${k}" versao="4.00">
+<ide><mod>55</mod><serie>1</serie><nNF>${nNF}</nNF><dhEmi>${today}T10:00:00-03:00</dhEmi></ide><emit><CNPJ>${emit}</CNPJ><xNome>${name}</xNome><enderEmit><UF>${head.uf}</UF></enderEmit></emit><dest><CNPJ>${head.document}</CNPJ></dest>
+${items.map((i, n) => `<det nItem="${n + 1}"><prod><cProd>${i.code}</cProd><cEAN>SEM GTIN</cEAN><xProd>${i.desc}</xProd><NCM>84672100</NCM><CFOP>${i.cfop ?? '5102'}</CFOP><uCom>UN</uCom><qCom>${i.qty}</qCom><vUnCom>${i.price}</vUnCom><vProd>${(i.qty * i.price).toFixed(2)}</vProd></prod></det>`).join('')}
+<total><ICMSTot><vNF>${tot}</vNF></ICMSTot></total>${dups}</infNFe></NFe><protNFe><infProt><chNFe>${k}</chNFe></infProt></protNFe></nfeProc>`
+}
+// Remessa para conserto: TES sem estoque e sem financeiro
+const supC = await call(admin, 'POST', '/suppliers', { cnpj: cnpj(r12()), name: 'Assistência ' + run, uf: head.uf })
+let pre = await call(admin, 'POST', '/invoices/import', { xml: mkXml(supC.cnpj, supC.name, 501, [{ code: 'X1', desc: 'FURADEIRA CONSERTADA', qty: 1, price: 150, cfop: '5916' }]) })
+assert.equal(pre.status, 'pre_nota'); assert.equal(pre.operationLabel.slice(0, 3), 'E01')
+pre = await call(tFis, 'PUT', `/invoices/${pre.id}`, { items: [{ id: pre.items[0].id, productId: prodA.id, tesId: tesNo.id }] })
+assert.equal(pre.items[0].tesId, tesNo.id); assert.equal(pre.items[0].entryCfop, '1915')
+assert.equal(pre.preview.stockItems, 0); assert.equal(pre.preview.financialAmount, 0)
+const stockBeforeA = Number((await call(admin, 'GET', `/products/${prodA.id}`)).stock)
+pre = await call(tFis, 'POST', `/invoices/${pre.id}/classify`)
+assert.equal(Number((await call(admin, 'GET', `/products/${prodA.id}`)).stock), stockBeforeA)
+assert.equal(pre.titles.length, 0)
+ok('pré-nota com TES de remessa (sem estoque e sem financeiro): classificada sem mexer em estoque nem gerar título')
+
+// Devolução de venda: o cliente devolve 1 furadeira → estoque volta e gera NCC no contas a receber
+const summaryBefore = await call(tFin, 'GET', '/finance/summary')
+await call(admin, 'POST', '/suppliers', { cnpj: custSP.document, name: custSP.name, uf: head.uf }).catch(() => null)
+pre = await call(admin, 'POST', '/invoices/import', { xml: mkXml(custSP.document, custSP.name, 77, [{ code: 'VA', desc: 'FURADEIRA 500W DEVOLUCAO', qty: 1, price: 210, cfop: '5202' }]) })
+pre = await call(tFis, 'PUT', `/invoices/${pre.id}`, { operationTypeId: opE05.id, items: [{ id: pre.items[0].id, productId: prodA.id }] })
+assert.equal(pre.isReturn, true); assert.equal(pre.items[0].tesLabel.slice(0, 3), '004'); assert.equal(pre.items[0].entryCfop, '1202')
+assert.equal(pre.preview.financialKind, 'NCC'); assert.equal(pre.preview.financialAmount, 210)
+const costA = Number((await call(admin, 'GET', `/products/${prodA.id}`)).costPrice)
+pre = await call(tFis, 'POST', `/invoices/${pre.id}/classify`)
+const afterA = await call(admin, 'GET', `/products/${prodA.id}`)
+assert.equal(Number(afterA.stock), stockBeforeA + 1); assert.equal(Number(afterA.costPrice), costA, 'devolução não muda o custo médio')
+assert.equal(pre.titles.length, 1); assert.equal(pre.titles[0].kind, 'R'); assert.equal(pre.titles[0].docType, 'NCC')
+const summaryAfter = await call(tFin, 'GET', '/finance/summary')
+assert.equal(Math.round((summaryBefore.receivable - summaryAfter.receivable) * 100) / 100, 210, 'NCC abate o contas a receber')
+const ncc = (await call(tFin, 'GET', `/finance/titles?kind=R&q=${encodeURIComponent('Crédito de devolução NF 77')}`))[0]
+assert.equal(ncc.docType, 'NCC'); assert.equal(ncc.partner, custSP.name)
+const bankBefore = (await call(tFin, 'GET', '/finance/bank-balances')).find((b) => b.id === bank.id).balance
+await call(tFin, 'POST', `/finance/titles/${ncc.id}/pay`, { bankAccountId: bank.id, paidAt: today, amount: 210 })
+assert.equal((await call(tFin, 'GET', '/finance/bank-balances')).find((b) => b.id === bank.id).balance, Math.round((bankBefore - 210) * 100) / 100, 'devolver o dinheiro ao cliente é saída')
+ok('devolução de venda (E05/TES 004): estoque volta pelo custo atual, NCC de R$ 210 abate o contas a receber e, ao devolver o dinheiro, sai do banco')
+
+// Devolução de compra: devolvemos 5 brocas ao fornecedor → estoque sai e gera NDF no contas a pagar
+const custFromSup = await call(admin, 'POST', '/catalog/customers', { document: supNf.cnpj, name: supNf.name, uf: head.uf, taxpayer: '1' })
+const payBefore = (await call(tFin, 'GET', '/finance/summary')).payable
+const ret = await call(tVend, 'POST', '/sales-orders', { customerId: custFromSup.id, operationTypeId: opS03.id, paymentTermId: vista.id, items: [{ productId: prodB.id, quantity: 5, unitPrice: 4 }] })
+assert.equal(ret.items[0].cfop, '5202')
+await call(tVend, 'POST', `/sales-orders/${ret.id}/approve`)
+const retNf = await call(tFat, 'POST', `/sales-orders/${ret.id}/invoice`)
+assert.equal(retNf.titles.length, 1); assert.equal(retNf.titles[0].kind, 'P'); assert.equal(retNf.titles[0].docType, 'NDF')
+assert.equal(Math.round((payBefore - (await call(tFin, 'GET', '/finance/summary')).payable) * 100) / 100, 20, 'NDF abate o contas a pagar')
+ok('devolução de compra (S03/TES 503): estoque sai e NDF de R$ 20 abate o contas a pagar do fornecedor')
 
 // BI
 await call(tFin, 'GET', '/bi/overview', undefined, 403)

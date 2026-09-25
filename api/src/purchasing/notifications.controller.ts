@@ -61,16 +61,6 @@ export class NotificationsController {
           description: 'Itens de solicitações que ainda não entraram em cotação', link: '/compras/cotacoes', createdAt: pending.since,
         })
       }
-      const invoices = await this.db.query(
-        `SELECT i.id, i.number, i.created_at AS "createdAt", s.name AS supplier FROM invoices i JOIN suppliers s ON s.id = i.supplier_id
-         WHERE i.status = 'pendente' ORDER BY i.created_at LIMIT 20`,
-      )
-      for (const n of invoices) {
-        notices.push({
-          id: `nota-${n.id}`, kind: 'nota', title: `Lançar NF ${n.number}`, description: `${n.supplier} · importada e não lançada`,
-          link: `/compras/notas/${n.id}`, createdAt: n.createdAt,
-        })
-      }
       const rejected = await this.db.query(
         `SELECT o.id, o.number, a.comment, a.created_at AS "createdAt" FROM purchase_orders o
          JOIN LATERAL (SELECT comment, created_at FROM purchase_order_approvals WHERE order_id = o.id AND decision = 'reprovado' ORDER BY created_at DESC LIMIT 1) a ON true
@@ -98,6 +88,20 @@ export class NotificationsController {
           id: `certificado-${c.id}`, kind: 'certificado',
           title: c.days < 0 ? 'Certificado A1 vencido' : c.days === 0 ? 'Certificado A1 vence hoje' : `Certificado A1 vence em ${c.days} dia(s)`,
           description: `${c.company} · renove para continuar emitindo notas`, link: '/cadastros/empresas/certificados', createdAt: new Date().toISOString(),
+        })
+      }
+    }
+
+    // Fiscal: pré-notas esperando classificação.
+    if (can(me, 'fiscal')) {
+      const invoices = await this.db.query(
+        `SELECT i.id, i.number, i.created_at AS "createdAt", s.name AS supplier FROM invoices i JOIN suppliers s ON s.id = i.supplier_id
+         WHERE i.status = 'pre_nota' ORDER BY i.created_at LIMIT 20`,
+      )
+      for (const n of invoices) {
+        notices.push({
+          id: `nota-${n.id}`, kind: 'nota', title: `Classificar NF ${n.number}`, description: `${n.supplier} · pré-nota aguardando classificação fiscal`,
+          link: `/compras/notas/${n.id}`, createdAt: n.createdAt,
         })
       }
     }
