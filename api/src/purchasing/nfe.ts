@@ -24,6 +24,8 @@ export interface Nfe {
   supplier: { cnpj: string; name: string; tradeName: string | null; city: string | null; uf: string | null; phone: string | null; email: string | null }
   recipientDocument: string | null
   orderNumber: string | null
+  // Duplicatas (cobr/dup): parcelas a pagar informadas pelo fornecedor.
+  duplicates: { number: string | null; dueDate: string; amount: number }[]
   items: NfeItem[]
 }
 
@@ -32,7 +34,7 @@ const parser = new XMLParser({
   attributeNamePrefix: '@_',
   parseTagValue: false, // mantém zeros à esquerda em códigos
   removeNSPrefix: true,
-  isArray: (name) => name === 'det',
+  isArray: (name) => name === 'det' || name === 'dup',
 })
 
 const text = (v: unknown) => (v === undefined || v === null || v === '' ? null : String(v).trim())
@@ -93,6 +95,9 @@ export function parseNfe(xml: string): Nfe {
     },
     recipientDocument: text(inf.dest?.CNPJ) ?? text(inf.dest?.CPF),
     orderNumber: text(compra?.xPed) ?? items.find((i) => i.orderNumber)?.orderNumber ?? null,
+    duplicates: ((inf.cobr?.dup ?? []) as any[])
+      .map((d) => ({ number: text(d.nDup), dueDate: text(d.dVenc) ?? '', amount: num(d.vDup) }))
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.dueDate) && d.amount > 0),
     items,
   }
 }

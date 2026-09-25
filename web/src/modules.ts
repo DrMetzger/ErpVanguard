@@ -13,7 +13,7 @@ export const modules: ModuleDef[] = [
   { path: '/cadastros', icon: IconDatabase, title: 'Cadastros' },
   { path: '/compras', icon: IconShoppingCart, title: 'Compras' },
   { path: '/estoque', icon: IconBox, title: 'Estoque' },
-  { path: '/faturamento', icon: IconReceipt, title: 'Faturamento', soon: ['Orçamentos', 'Pedidos de venda', 'NF-e / NFC-e', 'Pedidos dos marketplaces'] },
-  { path: '/financeiro', icon: IconWallet, title: 'Financeiro', soon: ['Contas a pagar', 'Contas a receber', 'Boletos e PIX', 'Fluxo de caixa'] },
-  { path: '/bi', icon: IconChartBar, title: 'BI Avançado', soon: ['Painel de vendas', 'Margem por produto e canal', 'Metas e alertas', 'Exportação Excel/PDF'] },
+  { path: '/faturamento', icon: IconReceipt, title: 'Faturamento' },
+  { path: '/financeiro', icon: IconWallet, title: 'Financeiro' },
+  { path: '/bi', icon: IconChartBar, title: 'BI Avançado' },
 ]

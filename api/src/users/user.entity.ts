@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm'
 
 export type UserRole = 'admin' | 'user'
-export const PERMISSIONS = ['solicitante', 'comprador', 'aprovador', 'cadastro', 'fiscal'] as const
+export const PERMISSIONS = ['solicitante', 'comprador', 'aprovador', 'cadastro', 'fiscal', 'vendedor', 'faturamento', 'financeiro', 'bi'] as const
 export type Permission = (typeof PERMISSIONS)[number]
 
 @Entity('users')

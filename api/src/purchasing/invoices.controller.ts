@@ -13,6 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { matchWithGemini } from './gemini'
 import { parseNfe } from './nfe'
 import { code, found } from './purchasing.helpers'
+import { categoryByCode, createTitles, round2, today } from '../finance/finance.logic'
 import { similarity } from './similarity'
 
 class ImportDto {
@@ -249,6 +250,21 @@ export class InvoicesController {
         )
       }
       await tx.query(`UPDATE invoices SET status = 'lancada', posted_at = now() WHERE id = $1`, [id])
+
+      // Contas a pagar: duplicatas do XML; sem duplicatas, uma parcela na data de emissão.
+      const nfe = parseNfe(invoice.xml)
+      const issueDate = (nfe.issueDate ?? '').slice(0, 10) || today()
+      const company = await one(tx, `SELECT id FROM companies WHERE document = $1`, [invoice.recipient_document])
+        ?? await one(tx, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`)
+      const total = round2(Number(invoice.total))
+      const parcels = nfe.duplicates.length ? nfe.duplicates.map((d) => ({ dueDate: d.dueDate, amount: round2(d.amount) })) : [{ dueDate: issueDate, amount: total }]
+      if (total > 0) {
+        await createTitles(tx, {
+          kind: 'P', companyId: company?.id ?? null, supplierId: invoice.supplier_id, categoryId: await categoryByCode(tx, '2.01'),
+          description: `Compra ${reference}`, document: reference, issueDate, parcels, invoiceId: id, userId: me.id,
+          notes: nfe.duplicates.length ? null : 'Nota sem duplicatas no XML: confira o vencimento',
+        })
+      }
       return this.load(tx, id)
     })
   }

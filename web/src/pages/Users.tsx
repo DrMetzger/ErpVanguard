@@ -14,6 +14,10 @@ const PERMS: [Permission, string, string][] = [
   ['aprovador', 'Aprovador', 'Aprova pedidos na sua alçada'],
   ['cadastro', 'Cadastros', 'Produtos, clientes, grupos, unidades, NCM, tabelas de preço'],
   ['fiscal', 'Fiscal', 'CFOP, TES, tipos de operação e matriz fiscal'],
+  ['vendedor', 'Vendedor', 'Orçamentos e pedidos de venda (só os próprios)'],
+  ['faturamento', 'Faturamento', 'Todos os pedidos, emite e cancela notas de saída'],
+  ['financeiro', 'Financeiro', 'Contas a pagar e a receber, baixas, bancos e fluxo de caixa'],
+  ['bi', 'BI Avançado', 'Painéis de vendas, margem, compras e financeiro'],
 ]
 
 export default function Users() {

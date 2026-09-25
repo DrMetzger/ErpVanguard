@@ -1,4 +1,4 @@
-export type Permission = 'solicitante' | 'comprador' | 'aprovador' | 'cadastro' | 'fiscal'
+export type Permission = 'solicitante' | 'comprador' | 'aprovador' | 'cadastro' | 'fiscal' | 'vendedor' | 'faturamento' | 'financeiro' | 'bi'
 
 export interface User {
   id: string

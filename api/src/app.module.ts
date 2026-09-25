@@ -4,7 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { AuthGuard } from './auth/auth.guard'
 import { AuthModule } from './auth/auth.module'
 import { CatalogModule } from './catalog/catalog.module'
+import { BiModule } from './bi/bi.module'
 import { CompaniesModule } from './companies/companies.module'
+import { FinanceModule } from './finance/finance.module'
+import { SalesModule } from './sales/sales.module'
 import { config } from './config'
 import { migrations } from './database/migrations'
 import { HealthController } from './health/health.controller'
@@ -32,6 +35,9 @@ import { UsersModule } from './users/users.module'
     SettingsModule,
     CatalogModule,
     CompaniesModule,
+    FinanceModule,
+    SalesModule,
+    BiModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],

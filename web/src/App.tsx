@@ -12,6 +12,9 @@ const ModuleSoon = lazy(() => import('./pages/ModuleSoon'))
 const Cadastros = lazy(() => import('./pages/cadastros'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Stock = lazy(() => import('./pages/Stock'))
+const Faturamento = lazy(() => import('./pages/faturamento'))
+const Financeiro = lazy(() => import('./pages/financeiro'))
+const Bi = lazy(() => import('./pages/bi'))
 const Users = lazy(() => import('./pages/Users'))
 
 export default function App() {
@@ -28,6 +31,9 @@ export default function App() {
         <Route path="estoque" element={<Stock />} />
         <Route path="fiscal/*" element={<FiscalRedirect />} />
         <Route path="compras/*" element={<Compras />} />
+        <Route path="faturamento/*" element={<Faturamento />} />
+        <Route path="financeiro/*" element={<Financeiro />} />
+        <Route path="bi" element={<Bi />} />
         <Route path="minha-conta" element={<Account />} />
         {user.role === 'admin' && <Route path="usuarios" element={<Users />} />}
         {user.role === 'admin' && <Route path="configuracoes" element={<Settings />} />}

@@ -22,7 +22,7 @@ export interface FieldDef {
 
 export interface ResourceDef {
   name: string
-  module: 'cadastros' | 'fiscal'
+  module: 'cadastros' | 'fiscal' | 'faturamento' | 'financeiro'
   title: string
   singular: string
   description: string
@@ -42,6 +42,10 @@ const CRT = [
   { value: '1', label: '1 · Simples Nacional' }, { value: '2', label: '2 · Simples Nacional (excesso de sublimite)' },
   { value: '3', label: '3 · Regime Normal (Lucro Presumido/Real)' }, { value: '4', label: '4 · MEI' },
 ]
+const BANKS = [
+  ['001', 'Banco do Brasil'], ['033', 'Santander'], ['077', 'Inter'], ['104', 'Caixa Econômica'], ['237', 'Bradesco'], ['260', 'Nubank'],
+  ['341', 'Itaú'], ['336', 'C6 Bank'], ['422', 'Safra'], ['748', 'Sicredi'], ['756', 'Sicoob'], ['041', 'Banrisul'], ['070', 'BRB'], ['290', 'PagBank'], ['323', 'Mercado Pago'],
+].map(([value, name]) => ({ value: value!, label: `${value} · ${name}` }))
 const TAXPAYER = [{ value: '1', label: 'Contribuinte de ICMS' }, { value: '2', label: 'Contribuinte isento' }, { value: '9', label: 'Não contribuinte' }]
 const active: FieldDef = { key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true, list: true }
 
@@ -208,6 +212,53 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'productGroupId', column: 'product_group_id', label: 'Grupo de produto', type: 'ref', ref: 'product-groups', list: true },
       { key: 'ncmPrefix', column: 'ncm_prefix', label: 'NCM começa com', type: 'text', pattern: '^\\d{2,8}$', patternMessage: '2 a 8 dígitos', list: true },
       { key: 'notes', column: 'notes', label: 'Descrição da regra', type: 'text', max: 200, span: 3 },
+      active,
+    ],
+  },
+  {
+    name: 'payment-terms', module: 'faturamento', title: 'Condições de pagamento', singular: 'condição', description: 'Em quantos dias vence cada parcela. Ex.: 30/60/90 gera 3 parcelas.',
+    table: 'payment_terms', labelExpr: "code || ' · ' || name", search: ['code', 'name', 'days'], order: 'code', write: ['faturamento', 'financeiro'],
+    fields: [
+      { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 6, upper: true, list: true },
+      { key: 'name', column: 'name', label: 'Nome', type: 'text', required: true, max: 60, list: true },
+      { key: 'days', column: 'days', label: 'Dias das parcelas', type: 'text', required: true, max: 60, pattern: '^\\d{1,3}(/\\d{1,3}){0,11}$', patternMessage: 'Dias separados por barra, ex.: 30/60/90', help: '0 = à vista', list: true },
+      active,
+    ],
+  },
+  {
+    name: 'finance-categories', module: 'financeiro', title: 'Plano de contas', singular: 'conta', description: 'Classifica receitas e despesas para o fluxo de caixa e o BI.',
+    table: 'finance_categories', labelExpr: "code || ' · ' || name", search: ['code', 'name'], order: 'code', write: ['financeiro'],
+    fields: [
+      { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 10, pattern: '^[\\d.]{1,10}$', patternMessage: 'Números e pontos, ex.: 2.08', list: true },
+      { key: 'name', column: 'name', label: 'Nome', type: 'text', required: true, max: 100, list: true, span: 2 },
+      { key: 'kind', column: 'kind', label: 'Tipo', type: 'enum', options: [{ value: 'R', label: 'Receita' }, { value: 'D', label: 'Despesa' }], required: true, list: true },
+      active,
+    ],
+  },
+  {
+    name: 'bank-accounts', module: 'financeiro', title: 'Contas bancárias e caixa', singular: 'conta', description: 'Onde o dinheiro entra e sai. O saldo é o inicial mais as baixas.',
+    table: 'bank_accounts', labelExpr: "code || ' · ' || name", search: ['code', 'name', 'bank'], order: 'code', write: ['financeiro'],
+    fields: [
+      { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 6, upper: true, list: true },
+      { key: 'name', column: 'name', label: 'Nome', type: 'text', required: true, max: 80, list: true, span: 2 },
+      { key: 'kind', column: 'kind', label: 'Tipo', type: 'enum', options: [{ value: 'banco', label: 'Banco' }, { value: 'caixa', label: 'Caixa' }], required: true, default: 'banco', list: true },
+      { key: 'bankCode', column: 'bank_code', label: 'Banco', type: 'enum', options: BANKS, list: true, span: 2 },
+      { key: 'bank', column: 'bank', label: 'Nome do banco (outro)', type: 'text', max: 60 },
+      { key: 'agency', column: 'agency', label: 'Agência', type: 'text', max: 10, pattern: '^\\d{1,10}$', patternMessage: 'Só números' },
+      { key: 'agencyDigit', column: 'agency_digit', label: 'Dígito da agência', type: 'text', max: 2 },
+      { key: 'account', column: 'account', label: 'Conta', type: 'text', max: 20, pattern: '^\\d{1,20}$', patternMessage: 'Só números', list: true },
+      { key: 'accountDigit', column: 'account_digit', label: 'Dígito da conta', type: 'text', max: 2 },
+      { key: 'openingBalance', column: 'opening_balance', label: 'Saldo inicial (R$)', type: 'decimal', default: 0 },
+      { key: 'cnabLayout', column: 'cnab_layout', label: 'Layout CNAB', type: 'enum', options: [{ value: '240', label: 'CNAB 240' }, { value: '400', label: 'CNAB 400' }], help: 'Para boletos e retorno do banco' },
+      { key: 'wallet', column: 'wallet', label: 'Carteira', type: 'text', max: 5 },
+      { key: 'agreement', column: 'agreement', label: 'Convênio', type: 'text', max: 20 },
+      { key: 'beneficiaryCode', column: 'beneficiary_code', label: 'Código do beneficiário (cedente)', type: 'text', max: 20 },
+      { key: 'nextOurNumber', column: 'next_our_number', label: 'Próximo nosso número', type: 'int', default: 1 },
+      { key: 'nextRemittance', column: 'next_remittance', label: 'Próxima remessa', type: 'int', default: 1 },
+      { key: 'finePct', column: 'fine_pct', label: 'Multa por atraso (%)', type: 'decimal', default: 0 },
+      { key: 'interestMonthPct', column: 'interest_month_pct', label: 'Juros ao mês (%)', type: 'decimal', default: 0 },
+      { key: 'protestDays', column: 'protest_days', label: 'Protestar após (dias)', type: 'int' },
+      { key: 'instructions', column: 'instructions', label: 'Instruções no boleto', type: 'text', max: 240, span: 3 },
       active,
     ],
   },

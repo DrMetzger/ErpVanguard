@@ -25,7 +25,7 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
 ### Menu
 
 Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empresas) · **Compras** · **Estoque** ·
-Faturamento · Financeiro · BI — e, para administradores, **Usuários** e **Configurações**.
+**Faturamento** · **Financeiro** · **BI Avançado** — e, para administradores, **Usuários** e **Configurações**.
 
 - **Cadastros › Produtos:** produtos (tipo SPED, grupo, unidade, NCM, origem), grupos, tipos, unidades, NCM
   e tabelas de preço.
@@ -38,9 +38,21 @@ Faturamento · Financeiro · BI — e, para administradores, **Usuários** e **C
   senha, CNPJ (a raiz da matriz vale para as filiais) e validade; arquivo e senha ficam criptografados
   (AES-256-GCM) e nunca voltam para a tela; o sino avisa 30 dias antes de vencer. Só administradores.
 - **Estoque:** saldos, custo médio e movimentações.
+- **Faturamento:** orçamento → pedido aprovado → faturar. Preço da tabela de preço ou do produto, desconto por item e no
+  pedido, frete; TES/CFOP pela matriz fiscal (UF do cliente × UF da filial). Faturar gera a nota de saída (numeração por
+  empresa), baixa o estoque (se a TES movimenta) e cria as parcelas a receber pela condição de pagamento (30/60/90…).
+  Cancelar a nota devolve o estoque e cancela as parcelas (bloqueado se já houver recebimento). Espelho da nota imprime com
+  o logo. Transmissão à SEFAZ ainda não existe (a nota fica "não transmitida").
+- **Financeiro:** contas a receber e a pagar (manuais, parceladas ou repetidas; das notas de venda; das NF-e de compra
+  lançadas, pelas duplicatas do XML), baixa parcial/total com desconto e juros, estorno, bancos e caixa com parâmetros de
+  cobrança CNAB 240/400 (carteira, convênio, beneficiário, nosso número, multa, juros, protesto), plano de contas e fluxo de
+  caixa dia a dia.
+- **BI Avançado:** faturamento, margem bruta (preço − custo médio na hora da venda), ticket médio, compras, a receber/pagar,
+  estoque; mês a mês, curva ABC, clientes, UF e vendedores; cada gráfico tem versão em tabela e exporta CSV (Excel).
 - **Configurações:** chave e modelos do Gemini (chave criptografada no banco, prioridade sobre o secret do
   servidor) e IA automática no XML.
-- **Perfis:** solicitante, comprador, aprovador, cadastro e fiscal (administrador tem todos).
+- **Perfis:** solicitante, comprador, aprovador, cadastro, fiscal, vendedor (só os próprios pedidos), faturamento,
+  financeiro e BI (administrador tem todos).
 - **Avatar:** "Pessoas" (Avataaars, uso comercial livre) com tom de pele escolhido pela própria pessoa e só
   expressões alegres; "Bichos" são desenhos próprios do Vanguard (`web/src/components/avatars`).
 
@@ -66,7 +78,7 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   Opcional: a variável `GEMINI_MODEL` (padrão `gemini-3.8-flash`).
 
 Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
-`node test/catalog-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD`).
 
 ### Desenvolvimento local
