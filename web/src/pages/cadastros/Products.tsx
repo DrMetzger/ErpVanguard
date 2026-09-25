@@ -9,6 +9,8 @@ import { money, qty, toNumber } from '../../lib/format'
 import { useOptions } from '../../lib/catalog'
 import { useAction, useApi } from '../../lib/hooks'
 import type { Product } from '../../lib/types'
+import { CustomFieldsInputs, customBody, customDisplay } from '../../components/CustomFields'
+import { layoutHelpers, useCustomization, type Customization } from '../../lib/custom'
 
 const ORIGINS = [
   { value: '0', label: '0 · Nacional' }, { value: '1', label: '1 · Estrangeira (importação direta)' }, { value: '2', label: '2 · Estrangeira (mercado interno)' },
@@ -22,6 +24,8 @@ export default function Products() {
   const { data, error, loading, reload } = useApi<Product[]>(`/products${q ? `?q=${encodeURIComponent(q)}` : ''}`)
   const [editing, setEditing] = useState<Partial<Product> | null>(null)
   const { run } = useAction()
+  const custom = useCustomization('products')
+  const cols = custom?.fields.filter((f) => f.showInList) ?? []
 
   const remove = (p: Product) => {
     if (confirm(`Excluir o produto "${p.name}"?`)) run(() => api(`/products/${p.id}`, { method: 'DELETE' }).then(reload), 'Produto excluído')
@@ -37,7 +41,7 @@ export default function Products() {
           <Table.ScrollContainer minWidth={760}>
             <Table>
               <Table.Thead>
-                <Table.Tr><Table.Th>Código</Table.Th><Table.Th>Produto</Table.Th><Table.Th>Grupo</Table.Th><Table.Th>Un.</Table.Th><Table.Th ta="right">Custo</Table.Th><Table.Th ta="right">Venda</Table.Th><Table.Th ta="right">Estoque</Table.Th><Table.Th w={90} /></Table.Tr>
+                <Table.Tr><Table.Th>Código</Table.Th><Table.Th>Produto</Table.Th><Table.Th>Grupo</Table.Th><Table.Th>Un.</Table.Th><Table.Th ta="right">Custo</Table.Th><Table.Th ta="right">Venda</Table.Th><Table.Th ta="right">Estoque</Table.Th>{cols.map((f) => <Table.Th key={f.key}>{custom!.layout.labels[`custom.${f.key}`] || f.label}</Table.Th>)}<Table.Th w={90} /></Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {data?.map((p) => (
@@ -49,6 +53,7 @@ export default function Products() {
                     <Table.Td ta="right">{money(p.costPrice)}</Table.Td>
                     <Table.Td ta="right">{money(p.salePrice)}</Table.Td>
                     <Table.Td ta="right">{p.stock <= p.minStock ? <Badge color="yellow" variant="light">{qty(p.stock)}</Badge> : qty(p.stock)}</Table.Td>
+                    {cols.map((f) => <Table.Td key={f.key}>{customDisplay(f, p.custom?.[f.key])}</Table.Td>)}
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
                         <Tooltip label="Editar"><ActionIcon variant="subtle" onClick={() => setEditing(p)} aria-label="Editar"><IconEdit size={17} /></ActionIcon></Tooltip>
@@ -63,12 +68,14 @@ export default function Products() {
         )}
         {data?.length === 0 && <Empty>{q ? 'Nenhum produto encontrado.' : 'Nenhum produto cadastrado ainda. Clique em "Novo produto".'}</Empty>}
       </Card>
-      {editing && <ProductForm product={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
+      {editing && <ProductForm custom={custom} product={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </>
   )
 }
 
-function ProductForm({ product, onClose, onSaved }: { product: Partial<Product>; onClose: () => void; onSaved: () => void }) {
+function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<Product>; custom: Customization | null; onClose: () => void; onSaved: () => void }) {
+  const L = layoutHelpers(custom?.layout)
+  const [extra, setExtra] = useState<Record<string, unknown>>(() => ({ ...(product.custom ?? {}) }))
   const isNew = !product.id
   const [form, setForm] = useState({
     sku: product.sku ?? '', name: product.name ?? '', barcode: product.barcode ?? '', ncm: product.ncm ?? '', unit: product.unit ?? 'UN',
@@ -91,6 +98,7 @@ function ProductForm({ product, onClose, onSaved }: { product: Partial<Product>;
       costPrice: toNumber(form.costPrice) ?? 0, salePrice: toNumber(form.salePrice) ?? 0, stock: toNumber(form.stock) ?? 0, minStock: toNumber(form.minStock) ?? 0,
       typeId: form.typeId ?? (isNew ? undefined : null), groupId: form.groupId ?? (isNew ? undefined : null), origin: Number(form.origin),
       ...(isNew ? {} : { active: form.active }),
+      ...(custom?.fields.length ? { custom: customBody(custom.fields, extra) } : {}),
     }
     run(() => api(isNew ? '/products' : `/products/${product.id}`, { method: isNew ? 'POST' : 'PATCH', body }).then(onSaved), 'Produto salvo')
   }
@@ -99,21 +107,21 @@ function ProductForm({ product, onClose, onSaved }: { product: Partial<Product>;
     <Modal opened onClose={onClose} title={isNew ? 'Novo produto' : 'Editar produto'} size="lg">
       <Stack component="form" onSubmit={submit}>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
-          <TextInput label="Código (SKU)" required data-autofocus value={form.sku} onChange={(e) => set('sku', e.currentTarget.value)} />
-          <TextInput label="Descrição" required value={form.name} onChange={(e) => set('name', e.currentTarget.value)} style={{ gridColumn: 'span 2' }} />
-          <TextInput label="Código de barras" inputMode="numeric" value={form.barcode} onChange={(e) => set('barcode', e.currentTarget.value)} />
-          <Autocomplete label="NCM" placeholder="8 dígitos" maxLength={8} inputMode="numeric" value={form.ncm} onChange={(v) => set('ncm', v.replace(/\D/g, '').slice(0, 8))}
-            data={ncms.map((n) => ({ value: n.label.slice(0, 8), label: n.label }))} />
-          <Select label="Unidade" required searchable data={units.filter((u) => u.active || u.code === form.unit).map((u) => ({ value: u.code, label: `${u.code} · ${u.description}` }))} value={form.unit} onChange={(v) => set('unit', v ?? 'UN')} />
-          <Select label="Tipo (SPED)" data={types} value={form.typeId} onChange={(v) => set('typeId', v)} clearable searchable />
-          <Select label="Grupo" data={groups} value={form.groupId} onChange={(v) => set('groupId', v)} clearable searchable />
-          <Select label="Origem da mercadoria" data={ORIGINS} value={form.origin} onChange={(v) => set('origin', v ?? '0')} allowDeselect={false} />
-          <Money label="Preço de custo" value={form.costPrice} onChange={(v) => set('costPrice', v)} />
-          <Money label="Preço de venda" value={form.salePrice} onChange={(v) => set('salePrice', v)} />
-          <div />
+          <TextInput label={L.label('sku', 'Código (SKU)')} style={{ order: L.order('sku') }} required data-autofocus value={form.sku} onChange={(e) => set('sku', e.currentTarget.value)} />
+          <TextInput label={L.label('name', 'Descrição')} required value={form.name} onChange={(e) => set('name', e.currentTarget.value)} style={{ gridColumn: 'span 2', order: L.order('name') }} />
+          {L.show('barcode') && <TextInput label={L.label('barcode', 'Código de barras')} style={{ order: L.order('barcode') }} inputMode="numeric" value={form.barcode} onChange={(e) => set('barcode', e.currentTarget.value)} />}
+          {L.show('ncm') && <Autocomplete label={L.label('ncm', 'NCM')} style={{ order: L.order('ncm') }} placeholder="8 dígitos" maxLength={8} inputMode="numeric" value={form.ncm} onChange={(v) => set('ncm', v.replace(/\D/g, '').slice(0, 8))}
+            data={ncms.map((n) => ({ value: n.label.slice(0, 8), label: n.label }))} />}
+          <Select label={L.label('unit', 'Unidade')} style={{ order: L.order('unit') }} required searchable data={units.filter((u) => u.active || u.code === form.unit).map((u) => ({ value: u.code, label: `${u.code} · ${u.description}` }))} value={form.unit} onChange={(v) => set('unit', v ?? 'UN')} />
+          {L.show('typeId') && <Select label={L.label('typeId', 'Tipo (SPED)')} style={{ order: L.order('typeId') }} data={types} value={form.typeId} onChange={(v) => set('typeId', v)} clearable searchable />}
+          {L.show('groupId') && <Select label={L.label('groupId', 'Grupo')} style={{ order: L.order('groupId') }} data={groups} value={form.groupId} onChange={(v) => set('groupId', v)} clearable searchable />}
+          {L.show('origin') && <Select label={L.label('origin', 'Origem da mercadoria')} style={{ order: L.order('origin') }} data={ORIGINS} value={form.origin} onChange={(v) => set('origin', v ?? '0')} allowDeselect={false} />}
+          {L.show('costPrice') && <Money label={L.label('costPrice', 'Preço de custo')} style={{ order: L.order('costPrice') }} value={form.costPrice} onChange={(v) => set('costPrice', v)} />}
+          {L.show('salePrice') && <Money label={L.label('salePrice', 'Preço de venda')} style={{ order: L.order('salePrice') }} value={form.salePrice} onChange={(v) => set('salePrice', v)} />}
           <BrNumber label="Estoque atual" decimalScale={4} allowNegative value={form.stock} onChange={(v) => set('stock', v)} />
-          <BrNumber label="Estoque mínimo" decimalScale={4} value={form.minStock} onChange={(v) => set('minStock', v)} />
+          {L.show('minStock') && <BrNumber label={L.label('minStock', 'Estoque mínimo')} style={{ order: L.order('minStock') }} decimalScale={4} value={form.minStock} onChange={(v) => set('minStock', v)} />}
         </SimpleGrid>
+        <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         {!isNew && <Switch label="Produto ativo" checked={form.active} onChange={(e) => set('active', e.currentTarget.checked)} />}
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
       </Stack>

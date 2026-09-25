@@ -7,12 +7,16 @@ import { api } from '../../lib/api'
 import { cnpj } from '../../lib/format'
 import { useAction, useApi } from '../../lib/hooks'
 import type { Supplier } from '../../lib/types'
+import { CustomFieldsInputs, customBody, customDisplay } from '../../components/CustomFields'
+import { layoutHelpers, useCustomization, type Customization } from '../../lib/custom'
 
 export default function Suppliers() {
   const [query, setQuery] = useState('')
   const [q] = useDebouncedValue(query.trim(), 250)
   const { data, loading, reload } = useApi<Supplier[]>(`/suppliers${q ? `?q=${encodeURIComponent(q)}` : ''}`)
   const [editing, setEditing] = useState<Partial<Supplier> | null>(null)
+  const custom = useCustomization('suppliers')
+  const cols = custom?.fields.filter((f) => f.showInList) ?? []
 
   return (
     <>
@@ -24,7 +28,7 @@ export default function Suppliers() {
         {loading && !data ? <Loading /> : (
           <Table.ScrollContainer minWidth={760}>
             <Table>
-              <Table.Thead><Table.Tr><Table.Th>Fornecedor</Table.Th><Table.Th>CNPJ/CPF</Table.Th><Table.Th>Cidade</Table.Th><Table.Th>Contato</Table.Th><Table.Th w={60} /></Table.Tr></Table.Thead>
+              <Table.Thead><Table.Tr><Table.Th>Fornecedor</Table.Th><Table.Th>CNPJ/CPF</Table.Th><Table.Th>Cidade</Table.Th><Table.Th>Contato</Table.Th>{cols.map((f) => <Table.Th key={f.key}>{custom!.layout.labels[`custom.${f.key}`] || f.label}</Table.Th>)}<Table.Th w={60} /></Table.Tr></Table.Thead>
               <Table.Tbody>
                 {data?.map((s) => (
                   <Table.Tr key={s.id} opacity={s.active ? 1 : 0.5}>
@@ -32,6 +36,7 @@ export default function Suppliers() {
                     <Table.Td ff="monospace" fz="sm">{cnpj(s.cnpj)}</Table.Td>
                     <Table.Td>{[s.city, s.uf].filter(Boolean).join(' / ') || '—'}</Table.Td>
                     <Table.Td>{s.email || s.phone || '—'}</Table.Td>
+                    {cols.map((f) => <Table.Td key={f.key}>{customDisplay(f, s.custom?.[f.key])}</Table.Td>)}
                     <Table.Td><Tooltip label="Editar"><ActionIcon variant="subtle" onClick={() => setEditing(s)} aria-label="Editar"><IconEdit size={17} /></ActionIcon></Tooltip></Table.Td>
                   </Table.Tr>
                 ))}
@@ -41,18 +46,24 @@ export default function Suppliers() {
         )}
         {data?.length === 0 && <Empty>Nenhum fornecedor. Eles também são cadastrados sozinhos ao importar um XML.</Empty>}
       </Card>
-      {editing && <SupplierForm supplier={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
+      {editing && <SupplierForm custom={custom} supplier={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </>
   )
 }
 
-function SupplierForm({ supplier, onClose, onSaved }: { supplier: Partial<Supplier>; onClose: () => void; onSaved: () => void }) {
+function SupplierForm({ supplier, custom, onClose, onSaved }: { supplier: Partial<Supplier>; custom: Customization | null; onClose: () => void; onSaved: () => void }) {
+  const L = layoutHelpers(custom?.layout)
+  const [extra, setExtra] = useState<Record<string, unknown>>(() => ({ ...(supplier.custom ?? {}) }))
   const isNew = !supplier.id
   const [form, setForm] = useState({
     cnpj: supplier.cnpj ? cnpj(supplier.cnpj) : '', name: supplier.name ?? '', tradeName: supplier.tradeName ?? '', email: supplier.email ?? '',
     phone: supplier.phone ?? '', city: supplier.city ?? '', uf: supplier.uf ?? '', active: supplier.active ?? true,
   })
   const { busy, run } = useAction()
+  const lookup = () => run(async () => {
+    const d = await api<Record<string, string | null>>(`/cnpj/${form.cnpj.replace(/\D/g, '')}`)
+    setForm((f) => ({ ...f, name: d.name ?? f.name, tradeName: d.tradeName ?? f.tradeName, email: d.email ?? f.email, phone: d.phone ?? f.phone, city: d.city ?? f.city, uf: d.uf ?? f.uf }))
+  }, 'Dados da Receita preenchidos')
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.currentTarget.value })
 
   const submit = (e: FormEvent) => {
@@ -61,6 +72,7 @@ function SupplierForm({ supplier, onClose, onSaved }: { supplier: Partial<Suppli
     for (const k of ['tradeName', 'phone', 'city', 'uf'] as const) body[k] = form[k].trim() || (isNew ? undefined : '')
     if (form.email.trim()) body.email = form.email.trim()
     if (!isNew) body.active = form.active
+    if (custom?.fields.length) body.custom = customBody(custom.fields, extra)
     run(() => api(isNew ? '/suppliers' : `/suppliers/${supplier.id}`, { method: isNew ? 'POST' : 'PATCH', body }).then(onSaved), 'Fornecedor salvo')
   }
 
@@ -68,13 +80,15 @@ function SupplierForm({ supplier, onClose, onSaved }: { supplier: Partial<Suppli
     <Modal opened onClose={onClose} title={isNew ? 'Novo fornecedor' : 'Editar fornecedor'} size="lg">
       <Stack component="form" onSubmit={submit}>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <TextInput label="CNPJ/CPF" required inputMode="numeric" data-autofocus value={form.cnpj} onChange={set('cnpj')} />
-          <TextInput label="Telefone" value={form.phone} onChange={set('phone')} />
-          <TextInput label="Razão social" required value={form.name} onChange={set('name')} />
-          <TextInput label="Nome fantasia" value={form.tradeName} onChange={set('tradeName')} />
-          <TextInput label="E-mail" type="email" value={form.email} onChange={set('email')} />
+          <TextInput label={L.label('cnpj', 'CNPJ/CPF')} style={{ order: L.order('cnpj') }} required inputMode="numeric" data-autofocus value={form.cnpj} onChange={set('cnpj')}
+            rightSectionWidth={92} rightSection={<Button size="compact-xs" variant="light" onClick={lookup} disabled={form.cnpj.replace(/\D/g, '').length !== 14} aria-label="Buscar na Receita">Receita</Button>} />
+          {L.show('phone') && <TextInput label={L.label('phone', 'Telefone')} style={{ order: L.order('phone') }} value={form.phone} onChange={set('phone')} />}
+          <TextInput label={L.label('name', 'Razão social')} style={{ order: L.order('name') }} required value={form.name} onChange={set('name')} />
+          {L.show('tradeName') && <TextInput label={L.label('tradeName', 'Nome fantasia')} style={{ order: L.order('tradeName') }} value={form.tradeName} onChange={set('tradeName')} />}
+          {L.show('email') && <TextInput label={L.label('email', 'E-mail')} style={{ order: L.order('email') }} type="email" value={form.email} onChange={set('email')} />}
           <Group grow><TextInput label="Cidade" value={form.city} onChange={set('city')} /><TextInput label="UF" maxLength={2} value={form.uf} onChange={set('uf')} maw={80} /></Group>
         </SimpleGrid>
+        <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         {!isNew && <Switch label="Fornecedor ativo" checked={form.active} onChange={(e) => setForm({ ...form, active: e.currentTarget.checked })} />}
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
       </Stack>

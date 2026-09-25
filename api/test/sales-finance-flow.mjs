@@ -49,40 +49,43 @@ await call(admin, 'PUT', `/catalog/price-tables/${table.id}/items`, { items: [{ 
 ok('carga: condições de pagamento, plano de contas e caixa já vêm prontos; clientes, produtos e tabela de preço criados')
 
 // Orçamento com preço da tabela e do produto
-await call(tFin, 'GET', '/sales-orders', undefined, 403)
-let order = await call(tVend, 'POST', '/sales-orders', {
+await call(tFin, 'GET', '/sales-quotes', undefined, 403)
+const quoteBody = (qty) => ({
   customerId: custRJ.id, paymentTermId: t306090.id, priceTableId: table.id, freight: 30, discount: 10,
-  items: [{ productId: prodA.id, quantity: 2 }, { productId: prodB.id, quantity: 10, discountPct: 10 }],
+  items: [{ productId: prodA.id, quantity: qty }, { productId: prodB.id, quantity: 10, discountPct: 10 }],
 })
-assert.equal(order.status, 'orcamento')
-assert.equal(order.items[0].unitPrice, 180, 'preço da tabela')
-assert.equal(order.items[1].unitPrice, 9.5, 'preço de venda do produto')
-assert.equal(order.items[1].total, 85.5)
-assert.equal(order.total, 2 * 180 + 85.5 + 30 - 10)
-assert.equal(order.items[0].cfop, '6102', 'venda interestadual')
-ok(`orçamento ${order.code}: preço da tabela e do produto, desconto no item e no pedido, frete; CFOP ${order.items[0].cfop} (fora do estado)`)
+let quote = await call(tVend, 'POST', '/sales-quotes', quoteBody(2))
+assert.equal(quote.status, 'aberto'); assert.ok(quote.code.startsWith('ORC-'))
+assert.equal(quote.validUntil, plus(15), 'validade padrão MV_ORCVAL = 15 dias')
+assert.equal(quote.items[0].unitPrice, 180, 'preço da tabela')
+assert.equal(quote.items[1].unitPrice, 9.5, 'preço de venda do produto')
+assert.equal(quote.items[1].total, 85.5)
+assert.equal(quote.total, 2 * 180 + 85.5 + 30 - 10)
+assert.equal(quote.items[0].cfop, '6102', 'venda interestadual')
+assert.ok(quote.taxes.icms > 0 && quote.taxes.pis > 0 && quote.items[0].taxes.icms.cst === '00', 'impostos calculados no orçamento (Lucro Presumido)')
+ok(`orçamento ${quote.code}: preço da tabela e do produto, descontos, frete, CFOP ${quote.items[0].cfop} e impostos (ICMS ${quote.taxes.icms}, PIS ${quote.taxes.pis}, COFINS ${quote.taxes.cofins})`)
 
-await call(tVend2, 'GET', `/sales-orders/${order.id}`, undefined, 404)
-assert.ok(!(await call(tVend2, 'GET', '/sales-orders')).some((o) => o.id === order.id))
+await call(tVend2, 'GET', `/sales-quotes/${quote.id}`, undefined, 404)
+assert.ok(!(await call(tVend2, 'GET', '/sales-quotes')).some((o) => o.id === quote.id))
+await call(tVend, 'POST', `/sales-quotes/${quote.id}/lose`, { reason: 'x' }, 400)
+quote = await call(tVend, 'POST', `/sales-quotes/${quote.id}/lose`, { reason: 'Preço acima do concorrente' })
+assert.equal(quote.status, 'perdido'); assert.equal(quote.lostReason, 'Preço acima do concorrente')
+await call(tVend, 'PUT', `/sales-quotes/${quote.id}`, quoteBody(2), 400)
+quote = await call(tVend, 'POST', `/sales-quotes/${quote.id}/reopen`)
+assert.equal(quote.status, 'aberto')
+ok('vendedor só vê os próprios orçamentos; perdido guarda o motivo e não é alterado; pode ser reaberto')
+
+// Ganho → pedido de venda; estoque insuficiente bloqueia o faturamento
+quote = await call(tVend, 'PUT', `/sales-quotes/${quote.id}`, quoteBody(12))
+let order = await call(tVend, 'POST', `/sales-quotes/${quote.id}/win`)
+assert.equal(order.status, 'aberto'); assert.ok(order.code.startsWith('PV-')); assert.equal(order.quoteCode, quote.code)
+assert.equal((await call(tVend, 'GET', `/sales-quotes/${quote.id}`)).status, 'ganho')
+await call(tVend, 'POST', `/sales-quotes/${quote.id}/win`, undefined, 400)
+assert.ok(order.warnings.some((w) => w.includes('estoque')))
 await call(tVend, 'POST', `/sales-orders/${order.id}/invoice`, undefined, 403)
 await call(tFat, 'POST', `/sales-orders/${order.id}/invoice`, undefined, 400)
-ok('vendedor só vê os próprios pedidos; só o faturamento fatura; orçamento não fatura antes de aprovar')
-
-// Estoque insuficiente
-order = await call(tVend, 'PUT', `/sales-orders/${order.id}`, {
-  customerId: custRJ.id, paymentTermId: t306090.id, priceTableId: table.id, freight: 30, discount: 10,
-  items: [{ productId: prodA.id, quantity: 12 }, { productId: prodB.id, quantity: 10, discountPct: 10 }],
-})
-assert.ok(order.warnings.some((w) => w.includes('estoque')))
-await call(tVend, 'POST', `/sales-orders/${order.id}/approve`)
-await call(tFat, 'POST', `/sales-orders/${order.id}/invoice`, undefined, 400)
-order = await call(tVend, 'PUT', `/sales-orders/${order.id}`, {
-  customerId: custRJ.id, paymentTermId: t306090.id, priceTableId: table.id, freight: 30, discount: 10,
-  items: [{ productId: prodA.id, quantity: 2 }, { productId: prodB.id, quantity: 10, discountPct: 10 }],
-})
-assert.equal(order.status, 'orcamento', 'alterar pedido aprovado volta para orçamento')
-await call(tVend, 'POST', `/sales-orders/${order.id}/approve`)
-ok('estoque insuficiente avisa e bloqueia o faturamento; alterar pedido aprovado exige nova aprovação')
+order = await call(tVend, 'PUT', `/sales-orders/${order.id}`, quoteBody(2))
+ok(`orçamento ganho gerou o pedido ${order.code}; só o faturamento fatura; estoque insuficiente bloqueia`)
 
 // Faturar
 const nf = await call(tFat, 'POST', `/sales-orders/${order.id}/invoice`)
@@ -121,13 +124,12 @@ const canceled = await call(tFat, 'POST', `/sales-invoices/${nf.id}/cancel`, { r
 assert.equal(canceled.status, 'cancelada')
 assert.ok(canceled.titles.every((x) => x.status === 'cancelado'))
 assert.equal(Number((await call(admin, 'GET', `/products/${prodA.id}`)).stock), 10)
-assert.equal((await call(tVend, 'GET', `/sales-orders/${order.id}`)).status, 'aprovado')
-ok('nota com recebimento não cancela; estornadas as baixas, o cancelamento devolve o estoque, cancela os títulos e o pedido volta a aprovado')
+assert.equal((await call(tVend, 'GET', `/sales-orders/${order.id}`)).status, 'aberto')
+ok('nota com recebimento não cancela; estornadas as baixas, o cancelamento devolve o estoque, cancela os títulos e o pedido volta a aberto')
 
 // Refatura à vista, dentro do estado
 const order2 = await call(tVend, 'POST', '/sales-orders', { customerId: custSP.id, paymentTermId: vista.id, items: [{ productId: prodA.id, quantity: 1, unitPrice: 210 }] })
 assert.equal(order2.items[0].cfop, '5102')
-await call(tVend, 'POST', `/sales-orders/${order2.id}/approve`)
 const nf2 = await call(tFat, 'POST', `/sales-orders/${order2.id}/invoice`)
 assert.equal(nf2.titles.length, 1); assert.equal(nf2.titles[0].dueDate, today)
 const nf3 = await call(tFat, 'POST', `/sales-orders/${order.id}/invoice`)
@@ -227,11 +229,43 @@ const custFromSup = await call(admin, 'POST', '/catalog/customers', { document: 
 const payBefore = (await call(tFin, 'GET', '/finance/summary')).payable
 const ret = await call(tVend, 'POST', '/sales-orders', { customerId: custFromSup.id, operationTypeId: opS03.id, paymentTermId: vista.id, items: [{ productId: prodB.id, quantity: 5, unitPrice: 4 }] })
 assert.equal(ret.items[0].cfop, '5202')
-await call(tVend, 'POST', `/sales-orders/${ret.id}/approve`)
 const retNf = await call(tFat, 'POST', `/sales-orders/${ret.id}/invoice`)
 assert.equal(retNf.titles.length, 1); assert.equal(retNf.titles[0].kind, 'P'); assert.equal(retNf.titles[0].docType, 'NDF')
 assert.equal(Math.round((payBefore - (await call(tFin, 'GET', '/finance/summary')).payable) * 100) / 100, 20, 'NDF abate o contas a pagar')
 ok('devolução de compra (S03/TES 503): estoque sai e NDF de R$ 20 abate o contas a pagar do fornecedor')
+
+// Impostos com regra na matriz: IPI + ICMS-ST para um produto específico
+const prodST = await call(admin, 'POST', '/products', { sku: `ST-${run}`, name: 'Pneu aro 14', unit: 'UN', ncm: '40111000', costPrice: 200, salePrice: 400, stock: 20 })
+const ruleIpi = await call(tFis, 'POST', '/catalog/tax-rules', { tax: 'IPI', name: 'IPI pneu ' + run, productId: prodST.id, cst: '50', rate: 10 })
+const ruleIcms = await call(tFis, 'POST', '/catalog/tax-rules', { tax: 'ICMS', name: 'ICMS c/ ST pneu ' + run, productId: prodST.id, cst: '10' })
+const ruleSt = await call(tFis, 'POST', '/catalog/tax-rules', { tax: 'ICMS_ST', name: 'ST pneu ' + run, productId: prodST.id, cst: '10', mva: 42 })
+await call(tVend, 'POST', '/catalog/tax-rules', { tax: 'IPI', name: 'x', cst: '50' }, 403)
+const pv = await call(tVend, 'POST', '/sales/preview', { customerId: custSP.id, paymentTermId: vista.id, items: [{ productId: prodST.id, quantity: 1 }] })
+const it = pv.items[0].taxes
+const internal = (await call(admin, 'GET', '/catalog/uf-icms')).find((u) => u.uf === head.uf).internalRate
+assert.equal(it.ipi.value, 40); assert.equal(it.icms.value, Math.round(400 * internal) / 100)
+assert.equal(it.st.base, Math.round(440 * 1.42 * 100) / 100)
+assert.equal(it.st.value, Math.round((Math.round(440 * 1.42 * 100) / 100 * internal / 100 - Math.round(400 * internal) / 100) * 100) / 100)
+assert.equal(pv.totals.total, Math.round((400 + 40 + it.st.value) * 100) / 100)
+const stOrder = await call(tVend, 'POST', '/sales-orders', { customerId: custSP.id, paymentTermId: vista.id, items: [{ productId: prodST.id, quantity: 1 }] })
+const stNf = await call(tFat, 'POST', `/sales-orders/${stOrder.id}/invoice`)
+assert.equal(stNf.total, pv.totals.total); assert.equal(stNf.titles[0].amount, pv.totals.total, 'cliente paga IPI e ST na duplicata')
+assert.equal(stNf.items[0].taxes.st.value, it.st.value)
+for (const r of [ruleIpi, ruleIcms, ruleSt]) await call(tFis, 'PATCH', `/catalog/tax-rules/${r.id}`, { active: false })
+ok(`matriz de impostos: IPI 10% = 40, ICMS ${internal}%, ST com MVA 42% = ${it.st.value}; total da nota ${stNf.total} (IPI e ST cobrados na duplicata)`)
+
+// Parâmetros: MV_ESTNEG libera faturar sem estoque
+await call(tVend, 'GET', '/parameters', undefined, 403)
+const paramsList = await call(admin, 'GET', '/parameters')
+assert.equal(paramsList.find((x) => x.key === 'MV_ESTNEG').value, false)
+await call(admin, 'PUT', '/parameters', { MV_ESTNEG: 'sim' }, 400)
+await call(admin, 'PUT', '/parameters', { MV_ESTNEG: true })
+const neg = await call(tVend, 'POST', '/sales-orders', { customerId: custSP.id, paymentTermId: vista.id, items: [{ productId: prodST.id, quantity: 999 }] })
+await call(tFat, 'POST', `/sales-orders/${neg.id}/invoice`)
+await call(admin, 'PUT', '/parameters', { MV_ESTNEG: false })
+const neg2 = await call(tVend, 'POST', '/sales-orders', { customerId: custSP.id, paymentTermId: vista.id, items: [{ productId: prodST.id, quantity: 999 }] })
+await call(tFat, 'POST', `/sales-orders/${neg2.id}/invoice`, undefined, 400)
+ok('parâmetro MV_ESTNEG: ligado fatura sem estoque; desligado bloqueia')
 
 // BI
 await call(tFin, 'GET', '/bi/overview', undefined, 403)

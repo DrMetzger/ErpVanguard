@@ -1,5 +1,5 @@
-import { Alert, Badge, Button, Card, Group, PasswordInput, SimpleGrid, Stack, Switch, TagsInput, Text, TextInput, ThemeIcon, Title } from '@mantine/core'
-import { IconBrain, IconBuilding, IconCircleCheck, IconFileCode, IconKey, IconPlugConnected } from '@tabler/icons-react'
+import { Alert, Badge, Button, Card, Group, PasswordInput, Select, SimpleGrid, Stack, Switch, TagsInput, Text, TextInput, ThemeIcon, Title } from '@mantine/core'
+import { IconBrain, IconBuilding, IconShieldCheck, IconCircleCheck, IconFileCode, IconKey, IconPlugConnected } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loading } from '../components/ui'
@@ -10,6 +10,7 @@ interface SettingsData {
   gemini: { configured: boolean; source: 'tela' | 'servidor' | 'nenhuma'; apiKeyHint: string | null; model: string; fallbackModels: string[] }
   nfe: { autoAi: boolean }
   company: { name: string; cnpj: string; uf: string }
+  serasa: { enabled: boolean; environment: 'homologacao' | 'producao'; clientId: string | null; secretHint: string | null }
 }
 const SOURCE = { tela: 'Configurada nesta tela', servidor: 'Configurada no servidor (GitHub)', nenhuma: 'Não configurada' }
 
@@ -50,6 +51,8 @@ export default function Settings() {
         <Section icon={IconBuilding} title="Empresas, filiais, logo e certificado A1" description="Agora ficam em Cadastros › Empresas: dados de cada filial (a UF define CFOP 5xxx ou 6xxx), logo do DANFE e dos relatórios e o certificado digital.">
           <Group justify="flex-end"><Button component={Link} to="/cadastros/empresas" variant="light">Abrir Cadastros › Empresas</Button></Group>
         </Section>
+
+        <SerasaSection data={data.serasa} onSaved={setData} />
 
         <Section icon={IconBrain} title="Inteligência artificial (Gemini)" description="Usada para amarrar itens de notas fiscais aos seus produtos. A chave fica criptografada e nunca é mostrada inteira.">
           <Group mb="md" gap="xs">
@@ -92,5 +95,32 @@ export default function Settings() {
         </Section>
       </Stack>
     </>
+  )
+}
+
+// Serasa Experian: API paga (contrato). Fica desligada até informar as chaves.
+function SerasaSection({ data, onSaved }: { data: SettingsData['serasa']; onSaved: (d: SettingsData) => void }) {
+  const [form, setForm] = useState({ enabled: data.enabled, environment: data.environment, clientId: data.clientId ?? '', clientSecret: '' })
+  const { busy, run } = useAction()
+  const save = () => run(async () => {
+    onSaved(await api<SettingsData>('/settings/serasa', { method: 'PUT', body: { enabled: form.enabled, environment: form.environment, clientId: form.clientId, ...(form.clientSecret ? { clientSecret: form.clientSecret } : {}) } }))
+    setForm((f) => ({ ...f, clientSecret: '' }))
+  }, 'Serasa salvo')
+  return (
+    <Section icon={IconShieldCheck} title="Consulta de crédito (Serasa Experian)" description="A API da Serasa é paga e depende de contrato. Deixe as chaves aqui; a consulta aparece no cadastro de clientes.">
+      <Group mb="md" gap="xs">
+        <Badge color={data.enabled ? 'teal' : 'gray'} variant="light" style={{ textTransform: 'none' }}>{data.enabled ? `Ativa (${data.environment})` : 'Em espera'}</Badge>
+        {data.secretHint && <Badge variant="light" color="gray" leftSection={<IconKey size={12} />} style={{ textTransform: 'none' }}>Secret {data.secretHint}</Badge>}
+      </Group>
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <TextInput label="Client ID" value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.currentTarget.value })} autoComplete="off" />
+        <PasswordInput label="Client secret" placeholder={data.secretHint ? 'Deixe vazio para manter' : ''} value={form.clientSecret} onChange={(e) => setForm({ ...form, clientSecret: e.currentTarget.value })} autoComplete="off" />
+        <Select label="Ambiente" data={[{ value: 'homologacao', label: 'Homologação (testes)' }, { value: 'producao', label: 'Produção' }]} value={form.environment} onChange={(v) => setForm({ ...form, environment: (v ?? 'homologacao') as 'homologacao' })} allowDeselect={false} />
+      </SimpleGrid>
+      <Group justify="space-between" mt="md">
+        <Switch label="Ativar consulta" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.currentTarget.checked })} />
+        <Button onClick={save} loading={busy}>Salvar Serasa</Button>
+      </Group>
+    </Section>
   )
 }

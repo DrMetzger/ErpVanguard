@@ -8,6 +8,7 @@ import { useUser } from '../../lib/auth'
 import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction, useApi } from '../../lib/hooks'
 import { dateTime } from './SalesInvoices'
+import { ItemTaxBadge, TaxTotalsBlock } from './TaxSummary'
 import type { SalesInvoice } from './types'
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -58,7 +59,7 @@ export default function SalesInvoiceDetail() {
         <Table.ScrollContainer minWidth={820}>
           <Table>
             <Table.Thead>
-              <Table.Tr><Table.Th>#</Table.Th><Table.Th>Produto</Table.Th><Table.Th>NCM</Table.Th><Table.Th>CFOP</Table.Th><Table.Th>TES</Table.Th><Table.Th ta="right">Qtd.</Table.Th><Table.Th ta="right">Preço unit.</Table.Th><Table.Th ta="right">Total</Table.Th></Table.Tr>
+              <Table.Tr><Table.Th>#</Table.Th><Table.Th>Produto</Table.Th><Table.Th>NCM</Table.Th><Table.Th>CFOP</Table.Th><Table.Th>TES</Table.Th><Table.Th ta="right">Qtd.</Table.Th><Table.Th ta="right">Preço unit.</Table.Th><Table.Th ta="right">Total</Table.Th><Table.Th>Impostos</Table.Th></Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {nf.items.map((i) => (
@@ -71,15 +72,15 @@ export default function SalesInvoiceDetail() {
                   <Table.Td ta="right">{qty(i.quantity)} {i.unit}</Table.Td>
                   <Table.Td ta="right">{price(i.unitPrice)}</Table.Td>
                   <Table.Td ta="right" fw={600}>{money(i.total)}</Table.Td>
+                  <Table.Td><ItemTaxBadge taxes={i.taxes} /></Table.Td>
                 </Table.Tr>
               ))}
-              <Table.Tr><Table.Td colSpan={7} c="dimmed">Produtos</Table.Td><Table.Td ta="right">{money(nf.productsTotal)}</Table.Td></Table.Tr>
-              {nf.freight > 0 && <Table.Tr><Table.Td colSpan={7} c="dimmed">Frete</Table.Td><Table.Td ta="right">{money(nf.freight)}</Table.Td></Table.Tr>}
-              {nf.discount > 0 && <Table.Tr><Table.Td colSpan={7} c="dimmed">Desconto</Table.Td><Table.Td ta="right">− {money(nf.discount)}</Table.Td></Table.Tr>}
-            </Table.Tbody>
+                          </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </Card>
+
+      {nf.taxes && <Card mb="md" maw={520} ml="auto"><Text fw={700} mb="xs">Totais e impostos</Text><TaxTotalsBlock totals={nf.taxes} /></Card>}
 
       <Card>
         <Text fw={700} mb="sm">{nf.titles[0]?.docType === 'NDF' ? 'Débito do fornecedor (NDF, no contas a pagar)' : 'Parcelas (contas a receber)'}</Text>

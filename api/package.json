@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "test": "npm run build && node test/gemini.test.mjs",
+    "test": "npm run build && node test/gemini.test.mjs && node test/taxes.test.mjs",
     "test:compras": "node test/purchasing-flow.mjs"
   },
   "dependencies": {

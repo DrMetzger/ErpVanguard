@@ -27,6 +27,7 @@ export interface Product {
   groupLabel?: string | null
   origin: number
   active: boolean
+  custom?: Record<string, unknown>
 }
 
 export interface Supplier {
@@ -39,6 +40,7 @@ export interface Supplier {
   city: string | null
   uf: string | null
   active: boolean
+  custom?: Record<string, unknown>
 }
 
 export interface Named { id: string; name: string }
@@ -257,10 +259,11 @@ export interface FieldDef {
 
 export interface ResourceMeta {
   name: string
-  module: 'cadastros' | 'fiscal'
+  module: string
   title: string
   singular: string
   description: string
+  customizable?: boolean
   write: Permission[]
   fields: FieldDef[]
 }

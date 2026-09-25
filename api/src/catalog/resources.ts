@@ -38,14 +38,15 @@ export interface ResourceDef {
 
 export const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO']
 const KIND = [{ value: 'E', label: 'Entrada' }, { value: 'S', label: 'Saída' }]
-const CRT = [
-  { value: '1', label: '1 · Simples Nacional' }, { value: '2', label: '2 · Simples Nacional (excesso de sublimite)' },
-  { value: '3', label: '3 · Regime Normal (Lucro Presumido/Real)' }, { value: '4', label: '4 · MEI' },
-]
 const BANKS = [
   ['001', 'Banco do Brasil'], ['033', 'Santander'], ['077', 'Inter'], ['104', 'Caixa Econômica'], ['237', 'Bradesco'], ['260', 'Nubank'],
   ['341', 'Itaú'], ['336', 'C6 Bank'], ['422', 'Safra'], ['748', 'Sicredi'], ['756', 'Sicoob'], ['041', 'Banrisul'], ['070', 'BRB'], ['290', 'PagBank'], ['323', 'Mercado Pago'],
 ].map(([value, name]) => ({ value: value!, label: `${value} · ${name}` }))
+export const REGIMES = [
+  { value: 'simples', label: 'Simples Nacional' }, { value: 'simples_excesso', label: 'Simples Nacional (excesso de sublimite)' },
+  { value: 'mei', label: 'MEI' }, { value: 'presumido', label: 'Lucro Presumido' }, { value: 'real', label: 'Lucro Real' },
+]
+const TAXES = [{ value: 'ICMS', label: 'ICMS' }, { value: 'ICMS_ST', label: 'ICMS-ST (substituição tributária)' }, { value: 'IPI', label: 'IPI' }, { value: 'PIS', label: 'PIS' }, { value: 'COFINS', label: 'COFINS' }]
 const TAXPAYER = [{ value: '1', label: 'Contribuinte de ICMS' }, { value: '2', label: 'Contribuinte isento' }, { value: '9', label: 'Não contribuinte' }]
 const active: FieldDef = { key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true, list: true }
 
@@ -66,7 +67,8 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'document', column: 'document', label: 'CNPJ', type: 'document', required: true, list: true },
       { key: 'name', column: 'name', label: 'Razão social', type: 'text', required: true, max: 200, list: true, span: 2 },
       { key: 'tradeName', column: 'trade_name', label: 'Nome fantasia', type: 'text', max: 200 },
-      { key: 'crt', column: 'crt', label: 'Regime tributário (CRT)', type: 'enum', options: CRT, default: '3', required: true, span: 2 },
+      { key: 'taxRegime', column: 'tax_regime', label: 'Regime tributário', type: 'enum', options: REGIMES, default: 'presumido', required: true, list: true, help: 'Define CST ou CSOSN, PIS/COFINS e o CRT da nota' },
+      { key: 'snCreditRate', column: 'sn_credit_rate', label: 'Alíquota de crédito do Simples (%)', type: 'decimal', help: 'Para CSOSN 101/201 (pCredSN)' },
       { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'text', max: 20 },
       { key: 'im', column: 'im', label: 'Inscrição municipal', type: 'text', max: 20 },
       { key: 'email', column: 'email', label: 'E-mail', type: 'text', max: 200, pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessage: 'E-mail inválido' },
@@ -198,6 +200,46 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'calcIpi', column: 'calc_ipi', label: 'Calcula IPI', type: 'bool', default: false },
       { key: 'calcPisCofins', column: 'calc_pis_cofins', label: 'Calcula PIS/COFINS', type: 'bool', default: true },
       { key: 'notes', column: 'notes', label: 'Observações', type: 'text', max: 1000, span: 3 },
+      active,
+    ],
+  },
+  {
+    name: 'tax-rules', module: 'fiscal', title: 'Matriz de impostos', singular: 'regra de imposto',
+    description: 'Como calcular cada imposto. Filtros vazios valem para qualquer valor; vence a regra mais específica. Sem regra: ICMS pela alíquota da UF (CST 00 ou CSOSN 102) e PIS/COFINS pelo regime.',
+    table: 'tax_rules', labelExpr: "tax || ' · ' || name", search: ['name', 'tax', 'ncm_prefix', 'cst', 'cfop'], order: 'tax, name', write: ['fiscal'],
+    fields: [
+      { key: 'tax', column: 'tax', label: 'Imposto', type: 'enum', options: TAXES, required: true, list: true },
+      { key: 'name', column: 'name', label: 'Nome da regra', type: 'text', required: true, max: 120, list: true, span: 2 },
+      { key: 'regime', column: 'regime', label: 'Regime fiscal', type: 'enum', options: REGIMES, list: true, help: 'Vazio = qualquer regime' },
+      { key: 'validFrom', column: 'valid_from', label: 'Vigência de', type: 'date' },
+      { key: 'validTo', column: 'valid_to', label: 'Vigência até', type: 'date' },
+      { key: 'operationTypeId', column: 'operation_type_id', label: 'Tipo de operação', type: 'ref', ref: 'operation-types' },
+      { key: 'uf', column: 'uf', label: 'UF do destinatário', type: 'uf', list: true },
+      { key: 'taxpayer', column: 'taxpayer', label: 'Contribuinte', type: 'enum', options: TAXPAYER },
+      { key: 'productId', column: 'product_id', label: 'Produto', type: 'ref', ref: 'products' },
+      { key: 'productGroupId', column: 'product_group_id', label: 'Grupo de produto', type: 'ref', ref: 'product-groups' },
+      { key: 'productTypeId', column: 'product_type_id', label: 'Tipo de item', type: 'ref', ref: 'product-types' },
+      { key: 'ncmPrefix', column: 'ncm_prefix', label: 'NCM começa com', type: 'text', pattern: '^\\d{2,8}$', patternMessage: '2 a 8 dígitos', list: true },
+      { key: 'cfop', column: 'cfop', label: 'CFOP', type: 'text', pattern: '^[1-7]\\d{3}$', patternMessage: 'CFOP com 4 dígitos' },
+      { key: 'cst', column: 'cst', label: 'CST / CSOSN', type: 'text', required: true, pattern: '^\\d{2,3}$', patternMessage: 'CST (2 dígitos) ou CSOSN (3 dígitos)', list: true },
+      { key: 'rate', column: 'rate', label: 'Alíquota (%)', type: 'decimal', list: true, help: 'Vazio: ICMS pela tabela de UF; IPI pelo NCM' },
+      { key: 'baseReduction', column: 'base_reduction', label: 'Redução da base (%)', type: 'decimal', default: 0 },
+      { key: 'mva', column: 'mva', label: 'MVA / IVA-ST (%)', type: 'decimal', help: 'Só ICMS-ST. Ajustada sozinha em operação interestadual' },
+      { key: 'stRate', column: 'st_rate', label: 'Alíquota interna do destino p/ ST (%)', type: 'decimal', help: 'Vazio: tabela de UF' },
+      { key: 'fcpRate', column: 'fcp_rate', label: 'FCP (%)', type: 'decimal', help: 'Vazio: tabela de UF' },
+      { key: 'creditRate', column: 'credit_rate', label: 'Crédito do Simples (%)', type: 'decimal', help: 'CSOSN 101/201; vazio usa o da empresa' },
+      { key: 'notes', column: 'notes', label: 'Observações', type: 'text', max: 300, span: 3 },
+      active,
+    ],
+  },
+  {
+    name: 'uf-icms', module: 'fiscal', title: 'ICMS por UF', singular: 'UF', description: 'Alíquota interna de ICMS e FCP de cada estado. Interestadual: 7% saindo do Sul/Sudeste (menos ES) para N/NE/CO/ES, 12% nos demais e 4% para importados.',
+    table: 'uf_icms', labelExpr: "uf", search: ['uf', 'notes'], order: 'uf', write: ['fiscal'],
+    fields: [
+      { key: 'uf', column: 'uf', label: 'UF', type: 'uf', required: true, list: true },
+      { key: 'internalRate', column: 'internal_rate', label: 'Alíquota interna (%)', type: 'decimal', required: true, list: true },
+      { key: 'fcpRate', column: 'fcp_rate', label: 'FCP (%)', type: 'decimal', default: 0, list: true },
+      { key: 'notes', column: 'notes', label: 'Observações', type: 'text', max: 200, list: true, span: 2 },
       active,
     ],
   },

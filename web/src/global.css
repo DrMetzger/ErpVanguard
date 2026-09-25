@@ -38,3 +38,4 @@ a { color: inherit; }
 :root[data-mantine-color-scheme="dark"] { --series-1: #3987e5; --series-2: #d95926; }
 .chart-card .recharts-cartesian-grid line { stroke: var(--mantine-color-default-border); }
 @media (min-width: 75em) { .bi-wide { grid-column: span 2; } }
+@media (min-width: 62em) { .customize-main { grid-column: span 3; } } @media (max-width: 62em) { .customize-main { grid-column: auto !important; } }

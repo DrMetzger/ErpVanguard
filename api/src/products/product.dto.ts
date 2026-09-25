@@ -1,5 +1,5 @@
 import { PartialType } from '@nestjs/mapped-types'
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator'
+import { IsBoolean, IsInt, IsObject, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator'
 
 export class CreateProductDto {
   @IsString()
@@ -60,6 +60,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean
+
+  @IsOptional()
+  @IsObject()
+  custom?: Record<string, unknown>
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}

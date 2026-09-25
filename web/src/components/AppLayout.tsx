@@ -2,7 +2,7 @@ import {
   ActionIcon, AppShell, Box, Burger, Divider, Group, NavLink, ScrollArea, Stack, Text, Tooltip, UnstyledButton, useComputedColorScheme, useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure, useLocalStorage, useMediaQuery } from '@mantine/hooks'
-import { IconDoorExit, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
+import { IconAdjustments, IconDoorExit, IconForms, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth, useUser } from '../lib/auth'
 import { home, modules } from '../modules'
@@ -129,6 +129,8 @@ export default function AppLayout() {
                 {!mini && <Text size="xs" fw={700} c="dimmed" tt="uppercase" mt="md" mb={4} px="sm">Administração</Text>}
                 {mini && <Divider my="sm" />}
                 {link({ path: '/usuarios', icon: IconUsers, title: 'Usuários' })}
+                {link({ path: '/personalizar', icon: IconForms, title: 'Personalizar cadastros' })}
+                {link({ path: '/parametros', icon: IconAdjustments, title: 'Parâmetros' })}
                 {link({ path: '/configuracoes', icon: IconSettings, title: 'Configurações' })}
               </>
             )}

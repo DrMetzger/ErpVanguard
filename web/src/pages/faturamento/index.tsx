@@ -1,14 +1,14 @@
 import { Text, Title } from '@mantine/core'
-import { IconCalendarDollar, IconFileInvoice, IconFileText } from '@tabler/icons-react'
+import { IconCalendarDollar, IconFileDollar, IconFileInvoice, IconFileText } from '@tabler/icons-react'
 import { Route } from 'react-router-dom'
 import { CatalogPage } from '../../components/CatalogPage'
 import { ModuleTabs } from '../../components/ModuleTabs'
 import { useUser } from '../../lib/auth'
 import { can } from '../../lib/format'
+import SalesDocForm from './SalesDocForm'
+import SalesDocs from './SalesDocs'
 import SalesInvoiceDetail from './SalesInvoiceDetail'
 import SalesInvoices from './SalesInvoices'
-import SalesOrderForm from './SalesOrderForm'
-import SalesOrders from './SalesOrders'
 
 export default function Faturamento() {
   const user = useUser()
@@ -25,13 +25,16 @@ export default function Faturamento() {
       base="/faturamento"
       title="Faturamento"
       tabs={[
-        { path: 'pedidos', label: 'Orçamentos e pedidos', icon: IconFileText, element: <SalesOrders /> },
+        { path: 'orcamentos', label: 'Orçamentos', icon: IconFileDollar, element: <SalesDocs key="quote" kind="quote" /> },
+        { path: 'pedidos', label: 'Pedidos de venda', icon: IconFileText, element: <SalesDocs key="order" kind="order" /> },
         { path: 'notas', label: 'Notas emitidas', icon: IconFileInvoice, element: <SalesInvoices /> },
         { path: 'condicoes', label: 'Condições de pagamento', icon: IconCalendarDollar, element: <CatalogPage name="payment-terms" /> },
       ]}
       extraRoutes={<>
-        <Route path="pedidos/novo" element={<SalesOrderForm />} />
-        <Route path="pedidos/:id" element={<SalesOrderForm />} />
+        <Route path="orcamentos/novo" element={<SalesDocForm key="quote-new" kind="quote" />} />
+        <Route path="orcamentos/:id" element={<SalesDocForm key="quote" kind="quote" />} />
+        <Route path="pedidos/novo" element={<SalesDocForm key="order-new" kind="order" />} />
+        <Route path="pedidos/:id" element={<SalesDocForm key="order" kind="order" />} />
         <Route path="notas/:id" element={<SalesInvoiceDetail />} />
       </>}
     />

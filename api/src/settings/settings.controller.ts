@@ -18,6 +18,14 @@ class GeminiDto {
   @IsOptional() @IsArray() @ArrayMaxSize(6) @Matches(MODEL, { each: true, message: 'Nome de modelo reserva inválido' }) fallbackModels?: string[]
 }
 
+class SerasaDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsIn(['homologacao', 'producao']) environment?: 'homologacao' | 'producao'
+  @IsOptional() @IsString() @Length(0, 200) clientId?: string
+  @IsOptional() @IsString() @Length(8, 400, { message: 'Client secret inválido' }) clientSecret?: string
+  @IsOptional() @IsBoolean() clearSecret?: boolean
+}
+
 class NfeDto {
   @IsBoolean() autoAi: boolean
 }
@@ -45,6 +53,7 @@ export class SettingsController {
         fallbackModels: gemini.fallbackModels,
       },
       nfe: await this.settings.nfe(),
+      serasa: await this.settings.serasa().then((s) => ({ enabled: s.enabled, environment: s.environment, clientId: s.clientId, secretHint: s.clientSecret ? `••••${s.clientSecret.slice(-4)}` : null })),
       company: await this.settings.company(),
     }
   }
@@ -53,6 +62,17 @@ export class SettingsController {
   async saveGemini(@CurrentUser() me: User, @Body() dto: GeminiDto) {
     requireAdmin(me)
     await this.settings.saveGemini(dto, me.id)
+    return this.get(me)
+  }
+
+  @Put('serasa')
+  async saveSerasa(@CurrentUser() me: User, @Body() dto: SerasaDto) {
+    requireAdmin(me)
+    if (dto.enabled) {
+      const current = await this.settings.serasa()
+      if (!(dto.clientId ?? current.clientId) || !(dto.clientSecret ?? current.clientSecret)) throw new BadRequestException('Para ativar, informe o client ID e o client secret do contrato com a Serasa')
+    }
+    await this.settings.saveSerasa(dto, me.id)
     return this.get(me)
   }
 

@@ -5,6 +5,7 @@ import { isAdmin } from '../common/access'
 import { digits, one } from '../common/db'
 import { isValidDocument } from '../purchasing/documents'
 import type { User } from '../users/user.entity'
+import { CUSTOMIZABLE, CustomFieldsService } from '../custom/custom-fields.service'
 import { REF_TARGETS, resource, RESOURCES, UFS, type FieldDef, type ResourceDef } from './resources'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -30,13 +31,14 @@ const RULES: Record<string, (row: Record<string, any>) => string | null> = {
 
 @Controller('catalog')
 export class CatalogController {
-  constructor(private readonly db: DataSource) {}
+  constructor(private readonly db: DataSource, private readonly custom: CustomFieldsService) {}
 
   // Descrição das telas (campos, rótulos, tipos) para o front montar formulários e tabelas.
   @Get('meta')
   meta() {
     return RESOURCES.map(({ table: _t, labelExpr: _l, search: _s, order: _o, fields, ...r }) => ({
       ...r,
+      customizable: !!CUSTOMIZABLE[r.name],
       fields: fields.map(({ column: _c, ...f }) => (f.type === 'uf' ? { ...f, options: UFS.map((u) => ({ value: u, label: u })) } : f)),
     }))
   }
@@ -72,7 +74,10 @@ export class CatalogController {
   async create(@CurrentUser() me: User, @Param('name') name: string, @Body() body: Record<string, unknown>) {
     const def = this.def(name)
     this.canWrite(me, def)
-    const values = this.values(def, body, true)
+    const { custom, ...rest } = body
+    const values = this.values(def, rest, true)
+    if (CUSTOMIZABLE[def.name]) values.custom = JSON.stringify(await this.custom.validate(def.name, custom, {}, true))
+    else if (custom !== undefined) throw new BadRequestException('Este cadastro não tem campos personalizados')
     const cols = Object.keys(values)
     const row = await this.run(def, () =>
       one(this.db, `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, Object.values(values)),
@@ -86,7 +91,12 @@ export class CatalogController {
     this.canWrite(me, def)
     const current = await one(this.db, `SELECT * FROM ${def.table} WHERE id = $1`, [id])
     if (!current) throw new NotFoundException(`${def.singular} não encontrado(a)`)
-    const values = this.values(def, body, false, current)
+    const { custom, ...rest } = body
+    const values = this.values(def, rest, false, current)
+    if (custom !== undefined) {
+      if (!CUSTOMIZABLE[def.name]) throw new BadRequestException('Este cadastro não tem campos personalizados')
+      values.custom = JSON.stringify(await this.custom.validate(def.name, custom, current.custom ?? {}))
+    }
     const cols = Object.keys(values)
     if (cols.length) {
       await this.run(def, () => this.db.query(`UPDATE ${def.table} SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...Object.values(values)]))
@@ -121,7 +131,7 @@ export class CatalogController {
   }
 
   private select(def: ResourceDef) {
-    const cols = ['t.id', ...def.fields.map((f) => `t.${f.column} AS "${f.key}"`)]
+    const cols = ['t.id', ...def.fields.map((f) => `t.${f.column} AS "${f.key}"`), ...(CUSTOMIZABLE[def.name] ? ['t.custom'] : [])]
     for (const f of def.fields.filter((f) => f.type === 'ref')) {
       const target = refTarget(f.ref!)!
       cols.push(`(SELECT ${target.labelExpr} FROM ${target.table} r WHERE r.id = t.${f.column}) AS "${f.key}Label"`)
@@ -155,6 +165,8 @@ export class CatalogController {
       out[f.column] = this.convert(f, v)
       if (f.required && (out[f.column] === null || out[f.column] === '')) throw new BadRequestException(`Informe ${f.label}`)
     }
+    // Empresa: o CRT da nota sai do regime tributário.
+    if (def.name === 'companies' && out.tax_regime) out.crt = { simples: '1', simples_excesso: '2', mei: '4' }[out.tax_regime as string] ?? '3'
     const rule = RULES[def.name]
     const message = rule?.({ ...(current ?? {}), ...out })
     if (message) throw new BadRequestException(message)

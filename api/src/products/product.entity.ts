@@ -45,6 +45,10 @@ export class Product {
   @Column({ type: 'smallint', default: 0 })
   origin: number
 
+  // Campos personalizados (Administração › Personalizar cadastros)
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  custom: Record<string, unknown>
+
   @Column({ default: true })
   active: boolean
 

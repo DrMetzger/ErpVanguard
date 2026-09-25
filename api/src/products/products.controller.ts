@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { ILike, QueryFailedError, Repository } from 'typeorm'
+import { CustomFieldsService } from '../custom/custom-fields.service'
 import { CreateProductDto, UpdateProductDto } from './product.dto'
 import { Product } from './product.entity'
 
@@ -21,7 +22,7 @@ const UNIQUE_VIOLATION = '23505'
 
 @Controller('products')
 export class ProductsController {
-  constructor(@InjectRepository(Product) private readonly products: Repository<Product>) {}
+  constructor(@InjectRepository(Product) private readonly products: Repository<Product>, private readonly custom: CustomFieldsService) {}
 
   @Get()
   async list(@Query('q') q?: string) {
@@ -48,14 +49,16 @@ export class ProductsController {
   }
 
   @Post()
-  create(@Body() dto: CreateProductDto) {
-    return this.save(this.products.create(dto))
+  async create(@Body() dto: CreateProductDto) {
+    const custom = await this.custom.validate('products', dto.custom, {}, true)
+    return this.save(this.products.create({ ...dto, custom }))
   }
 
   @Patch(':id')
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProductDto) {
     const product = await this.get(id)
-    return this.save(this.products.merge(product, dto))
+    const custom = await this.custom.validate('products', dto.custom, product.custom ?? {})
+    return this.save(this.products.merge(product, { ...dto, custom: custom ?? product.custom }))
   }
 
   @Delete(':id')

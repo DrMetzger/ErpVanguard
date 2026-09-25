@@ -1,11 +1,12 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { PartialType } from '@nestjs/mapped-types'
-import { IsBoolean, IsEmail, IsOptional, IsString, Length } from 'class-validator'
+import { IsBoolean, IsEmail, IsObject, IsOptional, IsString, Length } from 'class-validator'
 import { DataSource } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { requirePermission } from '../common/access'
 import { digits, one } from '../common/db'
 import type { User } from '../users/user.entity'
+import { CustomFieldsService } from '../custom/custom-fields.service'
 import { isValidDocument } from './documents'
 
 class CreateSupplierDto {
@@ -17,14 +18,15 @@ class CreateSupplierDto {
   @IsOptional() @IsString() @Length(0, 100) city?: string
   @IsOptional() @IsString() @Length(0, 2) uf?: string
   @IsOptional() @IsBoolean() active?: boolean
+  @IsOptional() @IsObject() custom?: Record<string, unknown>
 }
 class UpdateSupplierDto extends PartialType(CreateSupplierDto) {}
 
-const COLUMNS = `id, cnpj, name, trade_name AS "tradeName", email, phone, city, uf, active, created_at AS "createdAt"`
+const COLUMNS = `id, cnpj, name, trade_name AS "tradeName", email, phone, city, uf, active, custom, created_at AS "createdAt"`
 
 @Controller('suppliers')
 export class SuppliersController {
-  constructor(private readonly db: DataSource) {}
+  constructor(private readonly db: DataSource, private readonly custom: CustomFieldsService) {}
 
   @Get()
   list(@Query('q') q?: string) {
@@ -44,11 +46,12 @@ export class SuppliersController {
     if (await one(this.db, 'SELECT 1 FROM suppliers WHERE cnpj = $1', [cnpj])) {
       throw new ConflictException('Já existe um fornecedor com este CNPJ/CPF')
     }
+    const custom = await this.custom.validate('suppliers', dto.custom, {}, true)
     return one(
       this.db,
-      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, active)
-       VALUES ($1, $2, $3, $4, $5, $6, upper($7), coalesce($8, true)) RETURNING ${COLUMNS}`,
-      [cnpj, dto.name, dto.tradeName || null, dto.email || null, dto.phone || null, dto.city || null, dto.uf || null, dto.active ?? null],
+      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, active, custom)
+       VALUES ($1, $2, $3, $4, $5, $6, upper($7), coalesce($8, true), $9) RETURNING ${COLUMNS}`,
+      [cnpj, dto.name, dto.tradeName || null, dto.email || null, dto.phone || null, dto.city || null, dto.uf || null, dto.active ?? null, JSON.stringify(custom)],
     )
   }
 
@@ -56,6 +59,9 @@ export class SuppliersController {
   async update(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSupplierDto) {
     requirePermission(me, 'comprador')
     const cnpj = dto.cnpj === undefined ? null : this.document(dto.cnpj)
+    const current = await one(this.db, `SELECT custom FROM suppliers WHERE id = $1`, [id])
+    if (!current) throw new NotFoundException('Fornecedor não encontrado')
+    const custom = await this.custom.validate('suppliers', dto.custom, current.custom ?? {})
     try {
       const row = await one(
         this.db,
@@ -66,7 +72,7 @@ export class SuppliersController {
            phone = CASE WHEN $8::boolean THEN $9 ELSE phone END,
            city = CASE WHEN $10::boolean THEN $11 ELSE city END,
            uf = CASE WHEN $12::boolean THEN upper($13) ELSE uf END,
-           active = coalesce($14, active), updated_at = now()
+           active = coalesce($14, active), custom = coalesce($15, custom), updated_at = now()
          WHERE id = $1 RETURNING ${COLUMNS}`,
         [
           id, cnpj, dto.name ?? null,
@@ -75,7 +81,7 @@ export class SuppliersController {
           'phone' in dto, dto.phone || null,
           'city' in dto, dto.city || null,
           'uf' in dto, dto.uf || null,
-          dto.active ?? null,
+          dto.active ?? null, custom ? JSON.stringify(custom) : null,
         ],
       )
       if (!row) throw new NotFoundException('Fornecedor não encontrado')

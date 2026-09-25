@@ -11,6 +11,8 @@ import Login from './pages/Login'
 const ModuleSoon = lazy(() => import('./pages/ModuleSoon'))
 const Cadastros = lazy(() => import('./pages/cadastros'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Customize = lazy(() => import('./pages/Customize'))
+const Parameters = lazy(() => import('./pages/Parameters'))
 const Stock = lazy(() => import('./pages/Stock'))
 const Faturamento = lazy(() => import('./pages/faturamento'))
 const Financeiro = lazy(() => import('./pages/financeiro'))
@@ -37,6 +39,8 @@ export default function App() {
         <Route path="minha-conta" element={<Account />} />
         {user.role === 'admin' && <Route path="usuarios" element={<Users />} />}
         {user.role === 'admin' && <Route path="configuracoes" element={<Settings />} />}
+        {user.role === 'admin' && <Route path="personalizar" element={<Customize />} />}
+        {user.role === 'admin' && <Route path="parametros" element={<Parameters />} />}
         {modules.filter((m) => m.soon).map((m) => <Route key={m.path} path={m.path.slice(1)} element={<ModuleSoon module={m} />} />)}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -6,6 +6,8 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { isAdmin } from '../common/access'
 import { numbers, one } from '../common/db'
 import { resolveFiscal } from './fiscal'
+import { ParametersService } from '../params/parameters.service'
+import { computeTaxes, loadTaxContext } from '../taxes/tax-engine'
 import { SettingsService } from '../settings/settings.service'
 import type { User } from '../users/user.entity'
 
@@ -22,13 +24,15 @@ class ResolveDto {
   @IsOptional() @IsString() uf?: string
   @IsOptional() @IsIn(['1', '2', '9']) taxpayer?: string
   @IsOptional() @IsUUID() productId?: string
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) amount?: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) freight?: number
 }
 
 const canEdit = (me: User, ...perms: string[]) => isAdmin(me) || perms.some((p) => me.permissions.includes(p as never))
 
 @Controller()
 export class ExtrasController {
-  constructor(private readonly db: DataSource, private readonly settings: SettingsService) {}
+  constructor(private readonly db: DataSource, private readonly settings: SettingsService, private readonly params: ParametersService) {}
 
   // ---- Itens da tabela de preço
   @Get('catalog/price-tables/:id/items')
@@ -68,11 +72,17 @@ export class ExtrasController {
     return rows.map((r: any) => numbers(r, 'quantity', 'unitCost'))
   }
 
-  // ---- Matriz fiscal: qual TES e CFOP usar numa operação
+  // ---- Matriz fiscal: qual TES e CFOP usar numa operação; com produto e valor, também os impostos
   @Post('fiscal/resolve')
   async resolve(@Body() dto: ResolveDto) {
     const result = await resolveFiscal(this.db, dto, (await this.settings.company()).uf)
     if (!result) throw new NotFoundException('Nenhuma regra da matriz fiscal atende esta operação')
-    return result
+    if (!dto.productId || !dto.amount) return result
+    const company = await one(this.db, `SELECT id FROM companies WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY is_head DESC, code LIMIT 1`, [dto.companyId ?? null])
+    if (!company) return result
+    const p = (await one(this.db, `SELECT id, ncm, type_id, group_id, origin FROM products WHERE id = $1`, [dto.productId]))!
+    const ctx = await loadTaxContext(this.db, this.params, { companyId: company.id, destUf: dto.uf ?? null, taxpayer: dto.taxpayer ?? '9', operationTypeId: dto.operationTypeId, date: new Date().toISOString().slice(0, 10) })
+    const taxes = computeTaxes(ctx, [{ key: '0', productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: result.cfop, amount: dto.amount }], dto.freight ?? 0, 0)
+    return { ...result, regime: ctx.regime, taxes: taxes.items[0]!.taxes, totals: taxes.totals, warnings: taxes.warnings }
   }
 }

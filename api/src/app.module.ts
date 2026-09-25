@@ -6,6 +6,9 @@ import { AuthModule } from './auth/auth.module'
 import { CatalogModule } from './catalog/catalog.module'
 import { BiModule } from './bi/bi.module'
 import { CompaniesModule } from './companies/companies.module'
+import { CreditModule } from './credit/credit.module'
+import { CustomFieldsModule } from './custom/custom-fields.module'
+import { ParametersModule } from './params/parameters.module'
 import { FinanceModule } from './finance/finance.module'
 import { SalesModule } from './sales/sales.module'
 import { config } from './config'
@@ -35,6 +38,9 @@ import { UsersModule } from './users/users.module'
     SettingsModule,
     CatalogModule,
     CompaniesModule,
+    CreditModule,
+    CustomFieldsModule,
+    ParametersModule,
     FinanceModule,
     SalesModule,
     BiModule,

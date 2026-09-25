@@ -6,6 +6,7 @@ import { config } from '../config'
 export interface GeminiSettings { apiKey: string | null; model: string; fallbackModels: string[]; source: 'tela' | 'servidor' | 'nenhuma' }
 export interface NfeSettings { autoAi: boolean }
 export interface CompanySettings { name: string; cnpj: string; uf: string }
+export interface SerasaSettings { enabled: boolean; environment: 'homologacao' | 'producao'; clientId: string | null; clientSecret: string | null }
 
 // Chave de criptografia derivada do segredo do servidor (nunca vai para o banco).
 const key = () => createHash('sha256').update(`${config.jwtSecret}:app-settings`).digest()
@@ -80,6 +81,24 @@ export class SettingsService {
 
   async saveNfe(input: NfeSettings, userId: string) {
     await this.write('nfe', { autoAi: !!input.autoAi }, userId)
+  }
+
+  // Serasa Experian (API paga, por contrato): fica pronto para ativar com as chaves.
+  async serasa(): Promise<SerasaSettings> {
+    const saved = await this.read<{ enabled?: boolean; environment?: 'homologacao' | 'producao'; clientId?: string; clientSecret?: { iv: string; tag: string; data: string } }>('serasa')
+    let clientSecret: string | null = null
+    try { clientSecret = saved?.clientSecret ? decrypt(saved.clientSecret) : null } catch { clientSecret = null }
+    return { enabled: !!saved?.enabled, environment: saved?.environment ?? 'homologacao', clientId: saved?.clientId ?? null, clientSecret }
+  }
+
+  async saveSerasa(input: { enabled?: boolean; environment?: 'homologacao' | 'producao'; clientId?: string; clientSecret?: string; clearSecret?: boolean }, userId: string) {
+    const saved = (await this.read<Record<string, unknown>>('serasa')) ?? {}
+    if (input.enabled !== undefined) saved.enabled = input.enabled
+    if (input.environment) saved.environment = input.environment
+    if (input.clientId !== undefined) saved.clientId = input.clientId.trim() || null
+    if (input.clearSecret) delete saved.clientSecret
+    if (input.clientSecret) saved.clientSecret = encrypt(input.clientSecret.trim())
+    await this.write('serasa', saved, userId)
   }
 
   async company(): Promise<CompanySettings> {

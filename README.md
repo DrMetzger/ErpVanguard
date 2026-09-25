@@ -44,11 +44,23 @@ Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empre
   de venda → **NCC** (crédito do cliente) no contas a receber. Na saída, devolução de compra (S03) gera **NDF** (débito do
   fornecedor) no contas a pagar. NCC/NDF abatem o saldo e têm a baixa com o sinal invertido.
 - **Estoque:** saldos, custo médio e movimentações.
-- **Faturamento:** orçamento → pedido aprovado → faturar. Preço da tabela de preço ou do produto, desconto por item e no
-  pedido, frete; TES/CFOP pela matriz fiscal (UF do cliente × UF da filial). Faturar gera a nota de saída (numeração por
-  empresa), baixa o estoque (se a TES movimenta) e cria as parcelas a receber pela condição de pagamento (30/60/90…).
-  Cancelar a nota devolve o estoque e cancela as parcelas (bloqueado se já houver recebimento). Espelho da nota imprime com
-  o logo. Transmissão à SEFAZ ainda não existe (a nota fica "não transmitida").
+- **Faturamento:** **orçamento** (em negociação → ganho/perdido com motivo; validade pelo parâmetro MV_ORCVAL) → **ganho gera
+  o pedido de venda** → faturar (confere estoque, a não ser que MV_ESTNEG permita). Pedido também pode ser direto. Preço da tabela
+  ou do produto, descontos e frete; TES/CFOP pela matriz fiscal; **impostos calculados na hora** enquanto se digita. Faturar gera a
+  nota de saída, baixa o estoque e as parcelas a receber (com IPI e ST). Cancelar a nota devolve o estoque e cancela as parcelas.
+- **Impostos** (`api/src/taxes/tax-engine.ts`): ICMS (CST ou CSOSN conforme o regime), redução de base, ICMS-ST com MVA (ajustada
+  na interestadual), IPI (alíquota da regra ou do NCM), FCP, DIFAL + FCP do destino para não contribuinte, PIS/COFINS pelo regime
+  (Presumido cumulativo, Real não cumulativo, Simples/MEI no DAS), crédito do Simples (CSOSN 101/201) e avisos do MEI (NT 2024.001).
+  Regras em **Cadastros › Fiscal › Matriz de impostos** (filtros como no emissor do SEBRAE: regime, vigência, operação, UF,
+  contribuinte, produto, grupo, tipo, NCM, CFOP); sem regra, vale o padrão do regime. **ICMS por UF** traz a alíquota interna e o
+  FCP de cada estado (valores de referência: conferir). O regime (Simples, Simples excesso, MEI, Presumido, Real) fica no cadastro
+  da empresa e define o CRT.
+- **Parâmetros** (Administração): comportamento do sistema no estilo MV_ (estoque negativo, validade do orçamento, frete e IPI
+  na base do ICMS, DIFAL, ICMS fora da base do PIS/COFINS, alíquotas de PIS/COFINS).
+- **Personalizar cadastros** (Administração): campos novos (texto, número, data, sim/não, lista) em produtos, clientes,
+  fornecedores, empresas e demais cadastros, com opção de coluna na lista; e ajuste do formulário (esconder, renomear, reordenar).
+- **Receita e Serasa:** botão "Receita" no CNPJ de clientes, fornecedores e empresas preenche os dados pela BrasilAPI (gratuita).
+  A consulta de crédito da Serasa Experian (API paga) fica pronta em Configurações, esperando as chaves do contrato.
 - **Financeiro:** contas a receber e a pagar (manuais, parceladas ou repetidas; das notas de venda; das NF-e de compra
   lançadas, pelas duplicatas do XML), baixa parcial/total com desconto e juros, estorno, bancos e caixa com parâmetros de
   cobrança CNAB 240/400 (carteira, convênio, beneficiário, nosso número, multa, juros, protesto), plano de contas e fluxo de
@@ -84,7 +96,7 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   Opcional: a variável `GEMINI_MODEL` (padrão `gemini-3.8-flash`).
 
 Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
-`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD`).
 
 ### Desenvolvimento local

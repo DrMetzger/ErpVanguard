@@ -8,6 +8,8 @@ import { clearOptions, useOptions, useResource } from '../lib/catalog'
 import { cnpj, date, qty, toNumber } from '../lib/format'
 import { useAction, useApi } from '../lib/hooks'
 import type { CatalogRow, FieldDef, ResourceMeta } from '../lib/types'
+import { applyLayout, useCustomization, type Customization } from '../lib/custom'
+import { customBody, customDisplay, CustomFieldsInputs } from './CustomFields'
 import { BrNumber } from './inputs'
 import { Empty, Loading } from './ui'
 
@@ -25,6 +27,8 @@ function display(f: FieldDef, row: CatalogRow): ReactNode {
   }
 }
 
+const LOOKUP = ['customers', 'companies']
+
 // Tela de cadastro montada a partir da descrição vinda da API.
 export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (row: CatalogRow) => ReactNode }) {
   const meta = useResource(name)
@@ -34,10 +38,13 @@ export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (
   const { data, loading, reload } = useApi<CatalogRow[]>(`/catalog/${name}${q ? `?q=${encodeURIComponent(q)}` : ''}`)
   const [editing, setEditing] = useState<CatalogRow | Record<string, never> | null>(null)
   const { run } = useAction()
+  const custom = useCustomization(meta?.customizable ? name : null)
 
   if (!meta) return <Loading />
   const canWrite = user.role === 'admin' || meta.write.some((p) => user.permissions.includes(p))
-  const columns = meta.fields.filter((f) => f.list)
+  const fields = applyLayout(meta.fields, custom?.layout)
+  const columns = fields.filter((f) => f.list)
+  const customColumns = custom?.fields.filter((f) => f.showInList) ?? []
   const remove = (row: CatalogRow) => confirm(`Excluir este(a) ${meta.singular}?`) && run(() => api(`/catalog/${name}/${row.id}`, { method: 'DELETE' }).then(() => { clearOptions(); reload() }), 'Excluído')
 
   return (
@@ -52,15 +59,16 @@ export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (
       <TextInput placeholder="Buscar…" leftSection={<IconSearch size={16} />} value={query} onChange={(e) => setQuery(e.currentTarget.value)} maw={380} mb="md" aria-label={`Buscar ${meta.title}`} />
       <Card p={0}>
         {loading && !data ? <Loading /> : (
-          <Table.ScrollContainer minWidth={Math.max(560, columns.length * 150)}>
+          <Table.ScrollContainer minWidth={Math.max(560, (columns.length + customColumns.length) * 150)}>
             <Table>
               <Table.Thead>
-                <Table.Tr>{columns.map((f) => <Table.Th key={f.key} ta={f.type === 'decimal' || f.type === 'int' ? 'right' : undefined}>{f.label}</Table.Th>)}<Table.Th w={100} /></Table.Tr>
+                <Table.Tr>{columns.map((f) => <Table.Th key={f.key} ta={f.type === 'decimal' || f.type === 'int' ? 'right' : undefined}>{f.label}</Table.Th>)}{customColumns.map((f) => <Table.Th key={f.key}>{custom!.layout.labels[`custom.${f.key}`] || f.label}</Table.Th>)}<Table.Th w={100} /></Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {data?.map((row) => (
                   <Table.Tr key={row.id} opacity={row.active === false ? 0.5 : 1}>
                     {columns.map((f) => <Table.Td key={f.key} ta={f.type === 'decimal' || f.type === 'int' ? 'right' : undefined} style={f.type === 'bool' ? { whiteSpace: 'nowrap' } : undefined}>{display(f, row)}</Table.Td>)}
+                    {customColumns.map((f) => <Table.Td key={f.key}>{customDisplay(f, (row.custom as Record<string, unknown> | undefined)?.[f.key])}</Table.Td>)}
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
                         {rowActions?.(row)}
@@ -78,7 +86,7 @@ export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (
         )}
         {data?.length === 0 && <Empty>{q ? 'Nada encontrado.' : `Nenhum(a) ${meta.singular} cadastrado(a).`}</Empty>}
       </Card>
-      {editing && <CatalogForm meta={meta} row={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); clearOptions(); reload() }} />}
+      {editing && <CatalogForm meta={{ ...meta, fields }} custom={custom} row={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); clearOptions(); reload() }} />}
     </>
   )
 }
@@ -91,7 +99,7 @@ function RefSelect({ field, value, onChange }: { field: FieldDef; value: unknown
   )
 }
 
-function Field({ field, value, onChange }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void }) {
+function Field({ field, value, onChange, onLookup }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void; onLookup?: () => void }) {
   const common = { label: field.label, description: field.help, required: field.required }
   switch (field.type) {
     case 'bool': return <Switch label={field.label} checked={!!value} onChange={(e) => onChange(e.currentTarget.checked)} mt="lg" />
@@ -105,16 +113,25 @@ function Field({ field, value, onChange }: { field: FieldDef; value: unknown; on
     case 'date': return <TextInput {...common} type="date" value={(value as string) ?? ''} onChange={(e) => onChange(e.currentTarget.value)} />
     default:
       return <TextInput {...common} maxLength={field.max} value={(value as string) ?? ''} onChange={(e) => onChange(e.currentTarget.value)}
-        styles={field.upper ? { input: { textTransform: 'uppercase' } } : undefined} inputMode={field.type === 'document' ? 'numeric' : undefined} />
+        styles={field.upper ? { input: { textTransform: 'uppercase' } } : undefined} inputMode={field.type === 'document' ? 'numeric' : undefined}
+        rightSectionWidth={onLookup ? 92 : undefined}
+        rightSection={onLookup ? <Button size="compact-xs" variant="light" onClick={onLookup} aria-label="Buscar na Receita">Receita</Button> : undefined} />
   }
 }
 
-function CatalogForm({ meta, row, onClose, onSaved }: { meta: ResourceMeta; row: Partial<CatalogRow>; onClose: () => void; onSaved: () => void }) {
+function CatalogForm({ meta, custom, row, onClose, onSaved }: { meta: ResourceMeta; custom: Customization | null; row: Partial<CatalogRow>; onClose: () => void; onSaved: () => void }) {
   const isNew = !row.id
   const [form, setForm] = useState<Record<string, unknown>>(() =>
     Object.fromEntries(meta.fields.map((f) => [f.key, row[f.key] ?? (isNew ? f.default ?? (f.type === 'bool' ? false : '') : f.type === 'bool' ? false : '')])),
   )
+  const [extra, setExtra] = useState<Record<string, unknown>>(() => ({ ...((row.custom as Record<string, unknown>) ?? {}) }))
   const { busy, run } = useAction()
+  // Preenche com os dados da Receita Federal (só campos que existem neste cadastro)
+  const lookup = (doc: string) => run(async () => {
+    const d = await api<Record<string, unknown>>(`/cnpj/${doc.replace(/\D/g, '')}`)
+    setForm((s) => ({ ...s, ...Object.fromEntries(meta.fields.filter((f) => d[f.key] !== undefined && d[f.key] !== null && f.type !== 'document').map((f) => [f.key, d[f.key]])) }))
+    if (d.situation && d.situation !== 'ATIVA') throw new Error(`Situação na Receita: ${d.situation}`)
+  }, 'Dados da Receita preenchidos')
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -126,6 +143,7 @@ function CatalogForm({ meta, row, onClose, onSaved }: { meta: ResourceMeta; row:
       if (isNew && v === null) continue
       body[f.key] = v
     }
+    if (custom?.fields.length) body.custom = customBody(custom.fields, extra)
     run(() => api(isNew ? `/catalog/${meta.name}` : `/catalog/${meta.name}/${row.id}`, { method: isNew ? 'POST' : 'PATCH', body }).then(onSaved), 'Salvo')
   }
 
@@ -135,10 +153,11 @@ function CatalogForm({ meta, row, onClose, onSaved }: { meta: ResourceMeta; row:
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           {meta.fields.map((f) => (
             <div key={f.key} style={{ gridColumn: f.span && f.span > 1 ? `span ${f.span}` : undefined }} className="catalog-field">
-              <Field field={f} value={form[f.key]} onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))} />
+              <Field field={f} value={form[f.key]} onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))} onLookup={f.type === 'document' && LOOKUP.includes(meta.name) ? () => lookup(String(form[f.key] ?? '')) : undefined} />
             </div>
           ))}
         </SimpleGrid>
+        <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
       </Stack>
     </Modal>
