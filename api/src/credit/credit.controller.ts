@@ -121,6 +121,7 @@ export class CreditController {
         if (!res.ok) { this.log.warn(`CNPJ ${p.name}: HTTP ${res.status}`); continue }
         const data = p.map(await res.json())
         if (!data.name) { notFound++; continue }
+        if (!data.ie && p.name !== 'CNPJ.ws') await this.fillIe(cnpj, data)
         cache.set(cnpj, { at: Date.now(), data })
         return data
       } catch (error: any) {
@@ -130,6 +131,23 @@ export class CreditController {
     }
     if (notFound && notFound >= Math.min(2, providers.length)) throw new NotFoundException('CNPJ não encontrado na Receita Federal')
     throw new ServiceUnavailableException('Os serviços de consulta da Receita não responderam agora. Tente de novo em um minuto ou preencha à mão.')
+  }
+
+  // Só o CNPJ.ws traz a inscrição estadual (dados do Sintegra); quando outro serviço respondeu, busca a IE lá.
+  private async fillIe(cnpj: string, data: Cnpj) {
+    const base = process.env.CNPJ_IE_URL ?? (process.env.CNPJ_API_URL ? null : 'https://publica.cnpj.ws/cnpj')
+    if (!base) return
+    try {
+      const res = await fetch(`${base}/${cnpj}`, { signal: AbortSignal.timeout(6_000), headers: { Accept: 'application/json', 'User-Agent': 'ERP-Vanguard/1.0' } })
+      if (!res.ok) return
+      const ws = mapCnpjWs(await res.json())
+      data.ie = ws.ie
+      data.phone ??= ws.phone
+      data.phone2 ??= ws.phone2
+      data.email ??= ws.email
+    } catch (error: any) {
+      this.log.warn(`IE pelo CNPJ.ws: ${error.message}`)
+    }
   }
 
   // Consulta de crédito na Serasa (API paga). Sem contrato, fica em espera com orientação.

@@ -68,10 +68,10 @@ ok('títulos lançados com centro de custo (sintético recusado), alterados e fi
 
 // Venda com centro de custo: nota e contas a receber herdam do pedido
 if (!(await call(admin, 'GET', '/catalog/companies')).some((c) => c.active && c.isHead)) {
-  await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
+  await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
 }
 const head = await call(admin, 'GET', '/companies/branding')
-const customer = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente CC ' + run, uf: head?.uf || 'SP', taxpayer: '1', ie: IE[head?.uf || 'SP'] })
+const customer = await call(admin, 'POST', '/catalog/customers', { zip: '01001000', document: cnpj(r12()), name: 'Cliente CC ' + run, uf: head?.uf || 'SP', taxpayer: '1', ie: IE[head?.uf || 'SP'] })
 const product = await call(admin, 'POST', '/products', { sku: `CC-${run}`, name: 'Produto centro de custo', unit: 'UN', costPrice: 40, salePrice: 100, stock: 10 })
 const terms = await call(admin, 'GET', '/catalog/payment-terms')
 const order = await call(tVend, 'POST', '/sales-orders', { customerId: customer.id, paymentTermId: terms.find((t) => t.days === '30/60').id, costCenterId: ccB.id, items: [{ productId: product.id, quantity: 3 }] })

@@ -10,6 +10,9 @@
 		# Arquivos com hash no nome podem ficar em cache por 1 ano.
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# A página (index.html) sempre confere se há versão nova: nada de tela antiga depois de publicar.
+		@page not path /assets/*
+		header @page Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
