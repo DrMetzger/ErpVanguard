@@ -13,8 +13,9 @@ import { ProductPhotos1728300000000 } from './1728300000000-product-photos'
 import { ProductVideos1728400000000 } from './1728400000000-product-videos'
 import { PartnersAddress1728500000000 } from './1728500000000-partners-address'
 import { CostCenters1728800000000 } from './1728800000000-cost-centers'
+import { SefazEnvironment1728900000000 } from './1728900000000-sefaz-environment'
 import { Email1728700000000 } from './1728700000000-email'
 import { NcmNumbering1728600000000 } from './1728600000000-ncm-numbering'
 
 // Novas migrações entram aqui, em ordem.
-export const migrations = [Initial1727200000000, Purchasing1727300000000, CatalogsFiscal1727400000000, Companies1727500000000, Certificates1727600000000, SalesFinance1727700000000, EntryClassification1727800000000, CustomFields1727900000000, Taxes1728000000000, SalesQuotes1728100000000, CustomFieldTypes1728200000000, ProductPhotos1728300000000, ProductVideos1728400000000, PartnersAddress1728500000000, NcmNumbering1728600000000, Email1728700000000, CostCenters1728800000000]
+export const migrations = [Initial1727200000000, Purchasing1727300000000, CatalogsFiscal1727400000000, Companies1727500000000, Certificates1727600000000, SalesFinance1727700000000, EntryClassification1727800000000, CustomFields1727900000000, Taxes1728000000000, SalesQuotes1728100000000, CustomFieldTypes1728200000000, ProductPhotos1728300000000, ProductVideos1728400000000, PartnersAddress1728500000000, NcmNumbering1728600000000, Email1728700000000, CostCenters1728800000000, SefazEnvironment1728900000000]

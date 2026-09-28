@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Modal, PasswordInput, Select, Stack, Table, Text, Tooltip } from '@mantine/core'
+import { ActionIcon, Alert, Badge, Button, Card, Group, Modal, PasswordInput, SegmentedControl, Select, Stack, Table, Text, Tooltip } from '@mantine/core'
 import { Dropzone } from '@mantine/dropzone'
 import { notifications } from '@mantine/notifications'
 import { IconCertificate, IconFileCertificate, IconLock, IconPlus, IconTrash } from '@tabler/icons-react'
@@ -12,7 +12,17 @@ import { useAction, useApi } from '../../lib/hooks'
 interface Certificate {
   id: string; companyId: string; companyLabel: string; subject: string; holderDocument: string; issuer: string | null
   validFrom: string; validTo: string; daysLeft: number; active: boolean; createdAt: string; uploadedBy: string | null
+  environment: Environment; environmentChangedAt: string | null; environmentChangedBy: string | null
 }
+type Environment = 'homologacao' | 'producao'
+const ENVIRONMENTS = [{ value: 'homologacao', label: 'Homologação' }, { value: 'producao', label: 'Produção' }]
+
+// Ambiente da SEFAZ: homologação para testar (sem valor fiscal), produção para notas valendo.
+function EnvironmentSwitch({ value, onChange, disabled }: { value: Environment; onChange: (v: Environment) => void; disabled?: boolean }) {
+  return <SegmentedControl size="xs" data={ENVIRONMENTS} value={value} disabled={disabled} color={value === 'producao' ? 'red' : 'blue'}
+    onChange={(v) => onChange(v as Environment)} aria-label="Ambiente da SEFAZ" />
+}
+const confirmProduction = () => confirm('Mudar para PRODUÇÃO?\n\nAs notas transmitidas passam a ter valor fiscal (impostos devidos, aparecem para o destinatário e na SEFAZ). Use só depois de testar em homologação.')
 
 function Validity({ c }: { c: Certificate }) {
   if (!c.active) return <Badge color="gray" variant="light">Substituído</Badge>
@@ -32,6 +42,7 @@ function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   const [companyId, setCompanyId] = useState<string | null>(null)
   const [file, setFile] = useState<File | null>(null)
   const [password, setPassword] = useState('')
+  const [environment, setEnvironment] = useState<Environment>('homologacao')
   const [error, setError] = useState('')
   const { busy, run } = useAction()
 
@@ -40,7 +51,7 @@ function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     setError('')
     run(async () => {
       try {
-        await api('/certificates', { method: 'POST', body: { companyId, file: await toBase64(file!), password } })
+        await api('/certificates', { method: 'POST', body: { companyId, file: await toBase64(file!), password, environment } })
         notifications.show({ color: 'teal', message: 'Certificado salvo' })
         onSaved()
       } catch (err) {
@@ -65,6 +76,11 @@ function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
             </Group>
           </Dropzone>
           <PasswordInput label="Senha do certificado" value={password} onChange={(e) => setPassword(e.currentTarget.value)} required autoComplete="off" />
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>Ambiente da SEFAZ</Text>
+            <EnvironmentSwitch value={environment} onChange={(v) => (v === 'homologacao' || confirmProduction()) && setEnvironment(v)} />
+            <Text size="xs" c="dimmed">Comece em homologação: as notas vão para o ambiente de testes da SEFAZ, sem valor fiscal.</Text>
+          </Stack>
           <Alert variant="light" icon={<IconLock size={18} />}>
             O arquivo e a senha ficam guardados criptografados no servidor e nunca voltam para a tela. Conferimos a senha, o CNPJ e a validade antes de salvar.
           </Alert>
@@ -84,6 +100,8 @@ export default function Certificates() {
   const { data, loading, reload } = useApi<Certificate[]>('/certificates')
   const [uploading, setUploading] = useState(false)
   const { run } = useAction()
+  const setEnv = (c: Certificate, v: Environment) => (v === 'homologacao' || confirmProduction()) &&
+    run(() => api(`/certificates/${c.id}/environment`, { method: 'PATCH', body: { environment: v } }).then(reload), v === 'producao' ? 'Ambiente: PRODUÇÃO' : 'Ambiente: homologação')
   const remove = (c: Certificate) => confirm(`Excluir o certificado de ${c.subject}?`) && run(() => api(`/certificates/${c.id}`, { method: 'DELETE' }).then(reload), 'Certificado excluído')
 
   return (
@@ -97,10 +115,10 @@ export default function Certificates() {
       </Group>
       <Card p={0}>
         {loading && !data ? <Loading /> : (
-          <Table.ScrollContainer minWidth={820}>
+          <Table.ScrollContainer minWidth={1000}>
             <Table>
               <Table.Thead>
-                <Table.Tr><Table.Th>Empresa/filial</Table.Th><Table.Th>Titular</Table.Th><Table.Th>Emissor</Table.Th><Table.Th>Validade</Table.Th><Table.Th>Situação</Table.Th><Table.Th w={60} /></Table.Tr>
+                <Table.Tr><Table.Th>Empresa/filial</Table.Th><Table.Th>Titular</Table.Th><Table.Th>Emissor</Table.Th><Table.Th>Validade</Table.Th><Table.Th>Situação</Table.Th><Table.Th>Ambiente da SEFAZ</Table.Th><Table.Th w={60} /></Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {data?.map((c) => (
@@ -110,6 +128,10 @@ export default function Certificates() {
                     <Table.Td><Text size="sm">{c.issuer || '—'}</Text></Table.Td>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>{date(c.validFrom)} a {date(c.validTo)}</Table.Td>
                     <Table.Td><Validity c={c} /></Table.Td>
+                    <Table.Td>
+                      <EnvironmentSwitch value={c.environment} disabled={!c.active} onChange={(v) => setEnv(c, v)} />
+                      {c.environmentChangedAt && <Text size="xs" c="dimmed" mt={2}>Alterado em {new Date(c.environmentChangedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}{c.environmentChangedBy ? ` por ${c.environmentChangedBy}` : ''}</Text>}
+                    </Table.Td>
                     <Table.Td>
                       <Tooltip label="Excluir"><ActionIcon variant="subtle" color="red" onClick={() => remove(c)} aria-label="Excluir certificado"><IconTrash size={17} /></ActionIcon></Tooltip>
                     </Table.Td>
