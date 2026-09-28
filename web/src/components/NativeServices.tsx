@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, API_URL } from '../lib/api'
 import { flushQueue, setOffline } from '../lib/offline'
+import { loadSyncState, syncAll } from '../lib/localdb'
 
 const CONSENT = 'vanguard.location-consent'
 const POINTS = 'vanguard.pending-locations'
@@ -41,9 +42,9 @@ export function NativeServices() {
       // Conexão: volta a internet → envia a fila e as posições guardadas.
       const status = await Network.getStatus()
       setOffline(!status.connected)
-      const net = await Network.addListener('networkStatusChange', (s) => { setOffline(!s.connected); if (s.connected) { void flushQueue(); void beat() } })
+      const net = await Network.addListener('networkStatusChange', (s) => { setOffline(!s.connected); if (s.connected) { void flushQueue(); void beat(); window.dispatchEvent(new Event('vanguard:sync-now')) } })
       cleanups.push(() => void net.remove())
-      const resume = await App.addListener('resume', () => { void flushQueue(); void beat(); void notify() })
+      const resume = await App.addListener('resume', () => { void flushQueue(); void beat(); void notify(); window.dispatchEvent(new Event('vanguard:sync-now')) })
       cleanups.push(() => void resume.remove())
 
       // Batida de "estou ativo" com as posições acumuladas (vão todas quando houver internet).
@@ -102,8 +103,16 @@ export function NativeServices() {
         } catch { /* sem internet */ }
       }
 
+      // Base local: cadastros de trabalho no celular (só o que mudou desde a última vez).
+      const sync = () => { if (!navigator.onLine) return; void syncAll((p) => api(p)) }
+      await loadSyncState()
+      window.addEventListener('vanguard:sync-now', sync)
+      cleanups.push(() => window.removeEventListener('vanguard:sync-now', sync))
+
       if (stop) return
-      void beat(); void notify(); void checkUpdate(); void flushQueue()
+      void beat(); void notify(); void checkUpdate(); void flushQueue(); sync()
+      const t5 = setInterval(sync, 10 * 60_000)
+      cleanups.push(() => clearInterval(t5))
       const t1 = setInterval(() => void beat(), HEARTBEAT_MS)
       const t2 = setInterval(() => void notify(), NOTIFY_MS)
       const t3 = setInterval(() => void flushQueue(), 60_000)

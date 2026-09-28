@@ -1,3 +1,4 @@
+import { SyncStatus } from '../components/SyncStatus'
 import { Badge, Button, Card, ColorSwatch, Group, PasswordInput, SegmentedControl, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { IconRefresh } from '@tabler/icons-react'
 import { ANIMAL_NAMES } from '../components/avatars/vanguard'
@@ -24,6 +25,7 @@ export default function Account() {
   return (
     <>
       <Title order={2} mb="lg">Meu perfil</Title>
+      <SyncStatus />
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card>
           <Group>

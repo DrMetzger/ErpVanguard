@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core'
+import { SyncStatus } from '../components/SyncStatus'
 import { Badge, Card, Group, SimpleGrid, Skeleton, Text, ThemeIcon, Title, UnstyledButton } from '@mantine/core'
 import { IconAlertTriangle, IconBox, IconCash } from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
@@ -24,6 +26,7 @@ export default function Dashboard() {
     <>
       <Title order={2}>Olá, {user.name.split(' ')[0]} 👋</Title>
       <Text c="dimmed" mb="xl">Visão geral da sua operação.</Text>
+      {Capacitor.isNativePlatform() && <SyncStatus />}
 
       <SimpleGrid cols={{ base: 1, sm: 3 }} mb={36}>
         {stats.map((s) => (

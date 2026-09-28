@@ -68,4 +68,25 @@ await call(tU, 'GET', '/catalog/units', undefined, undefined, H)
 await call(admin, 'POST', '/devices/nao-existe-123/block', {}, 404)
 ok('aparelho bloqueado: nada passa (nem login), mensagem com o motivo; computador segue; desbloquear libera; só admin bloqueia')
 
+// Sincronização: primeira vez tudo (em páginas), depois só o que mudou, inclusive exclusões
+let page = await call(tU, 'GET', '/catalog/units/sync?limit=100')
+let lastAt = page.rows.at(-1)?._at
+while (page.next) { page = await call(tU, 'GET', `/catalog/units/sync?limit=100&since=${encodeURIComponent(page.next.since)}&after=${encodeURIComponent(page.next.after)}`); lastAt = page.rows.at(-1)?._at ?? lastAt }
+const cursor = { since: lastAt }
+const unit = await call(admin, 'POST', '/catalog/units', { code: 'S' + run.slice(-4), description: 'Sincronizada ' + run })
+let delta = await call(tU, 'GET', `/catalog/units/sync?since=${encodeURIComponent(cursor.since)}`)
+assert.ok(delta.rows.some((r) => r.id === unit.id && r._label.includes('Sincronizada')), 'nova aparece')
+const totalUnits = (await call(tU, 'GET', '/catalog/units')).length
+assert.ok(delta.rows.length < totalUnits, `só o que mudou (${delta.rows.length} de ${totalUnits})`)
+await call(admin, 'PATCH', `/catalog/units/${unit.id}`, { description: 'Alterada ' + run })
+await call(admin, 'DELETE', `/catalog/units/${unit.id}`, undefined, 204)
+delta = await call(tU, 'GET', `/catalog/units/sync?since=${encodeURIComponent(cursor.since)}`)
+assert.ok(delta.deleted.includes(unit.id), 'exclusão chega ao celular')
+await call(admin, 'POST', '/products', { sku: 'SY-' + run, name: 'Produto sincronizado ' + run, unit: 'UN' })
+const prods = await call(tU, 'GET', `/catalog/products/sync?since=${encodeURIComponent(cursor.since)}`)
+assert.ok(prods.rows[0].sku && prods.rows[0]._label && prods.rows[0]._search, 'produto com rótulo e texto de busca')
+const items = await call(tU, 'GET', '/catalog/price-table-items/sync')
+assert.ok(Array.isArray(items.rows))
+ok('sincronização: primeira vez em páginas; depois só inclusões/alterações e exclusões desde a última vez')
+
 console.log(`\n${passed} verificações passaram`)

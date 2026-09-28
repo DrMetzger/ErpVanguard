@@ -72,13 +72,14 @@ export function noteCacheUsed(at: string) {
   emit()
 }
 export async function clearOfflineData() {
+  void import('./localdb').then((m) => m.clearLocal())
   try { await tx(CACHE, 'readwrite', (s) => s.clear()); await tx(QUEUE, 'readwrite', (s) => s.clear()) } catch { /* nada guardado */ }
   emit()
 }
 
 // ── fila de gravações ──
 // Nunca vão para a fila: login, SEFAZ, e-mail, importação por planilha, certificados e configurações.
-const NOT_QUEUED = [/^\/auth\//, /\/nfe(\/|$)/, /^\/sefaz/, /\/email$/, /\/sheet\//, /^\/certificates/, /^\/settings/, /^\/devices\//, /^\/invoice-numbering/, /\/inutilizar/]
+const NOT_QUEUED = [/^\/auth\//, /^\/sales\/preview/, /\/nfe(\/|$)/, /^\/sefaz/, /\/email$/, /\/sheet\//, /^\/certificates/, /^\/settings/, /^\/devices\//, /^\/invoice-numbering/, /\/inutilizar/]
 export const canQueue = (path: string) => !NOT_QUEUED.some((r) => r.test(path))
 export const newKey = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '')
 

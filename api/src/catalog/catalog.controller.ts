@@ -267,6 +267,39 @@ export class CatalogController {
     }
   }
 
+  // ── Sincronização do app do celular: só o que mudou desde a última vez ──────────────
+  // Cursor = (updated_at, id) da última linha recebida; a primeira página também traz as exclusões.
+  @Get(':name/sync')
+  async sync(@Param('name') name: string, @Query('since') since?: string, @Query('after') after?: string, @Query('limit') limit?: string) {
+    const n = Math.min(5000, Math.max(100, Number(limit) || 2000))
+    const from = since && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}(:?\d{2})?|Z)?$/.test(since) ? since : '1970-01-01 00:00:00+00'
+    if (name === 'price-table-items') {
+      const rows = await this.db.query(
+        `SELECT i.price_table_id::text || ':' || i.product_id::text AS id, i.price_table_id AS "priceTableId", i.product_id AS "productId", i.price, i.updated_at::text AS "_at"
+         FROM price_table_items i
+         WHERE i.updated_at > $1::timestamptz OR (i.updated_at = $1::timestamptz AND i.price_table_id::text || ':' || i.product_id::text > $2)
+         ORDER BY i.updated_at, 1 LIMIT $3`, [from, after ?? '', n])
+      rows.forEach((r: any) => { r.price = Number(r.price) })
+      return this.syncPage('price_table_items', rows, n, from, after)
+    }
+    const def = name === 'products' ? PRODUCT_SHEET : this.def(name)
+    const rows = await this.db.query(
+      `SELECT ${this.select(def)}, t.updated_at::text AS "_at", (${def.labelExpr}) AS "_label",
+              lower(concat_ws(' ', ${def.search.map((c) => `t.${c}::text`).join(', ')})) AS "_search", t.${def.order.split(',')[0]!.trim().split(' ')[0]}::text AS "_sort"
+       FROM ${def.table} t
+       WHERE t.updated_at > $1::timestamptz OR (t.updated_at = $1::timestamptz AND t.id::text > $2)
+       ORDER BY t.updated_at, t.id LIMIT $3`, [from, after ?? '', n])
+    return this.syncPage(def.table, rows.map((r: any) => this.out(def, r)), n, from, after)
+  }
+
+  private async syncPage(table: string, rows: any[], n: number, since: string, after?: string) {
+    const deleted = after ? [] : (await this.db.query(`SELECT row_key FROM sync_deletions WHERE tbl = $1 AND deleted_at > $2::timestamptz`, [table, since])).map((r: any) => r.row_key)
+    const last = rows.at(-1)
+    // Terminou: o próximo começa um pouco antes de agora (cobre gravações que estavam em andamento).
+    const [{ safe }] = await this.db.query(`SELECT (now() - interval '2 minutes')::text AS safe`)
+    return { rows, deleted, next: rows.length === n ? { since: last._at, after: last.id } : null, resume: safe }
+  }
+
   private sheetDef(name: string) {
     return name === 'products' ? PRODUCT_SHEET : this.def(name)
   }

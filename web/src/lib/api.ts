@@ -1,3 +1,4 @@
+import { localAnswer, syncState } from './localdb'
 import { cacheGet, cachePut, canQueue, clearOfflineData, describe, enqueue, newKey, noteCacheUsed, QueuedOffline, setOffline, setSender } from './offline'
 const TOKEN_KEY = 'vanguard.token'
 // No site fica vazio (mesmo domínio); no app Android aponta para o servidor.
@@ -47,6 +48,9 @@ export async function api<T = unknown>(path: string, options: { method?: Method;
     // Sem conexão: mostra o que está guardado no aparelho ou guarda a gravação para enviar depois.
     setOffline(true)
     if (method === 'GET') {
+      // Primeiro a base sincronizada do celular (produtos, clientes, tabelas…), depois a última tela guardada.
+      const local = await localAnswer(path).catch(() => null)
+      if (local) { const at = syncState().lastSync; if (at) noteCacheUsed(at); return local.data as T }
       const hit = await cacheGet<T>(path)
       if (hit) { noteCacheUsed(hit.at); return hit.data }
       throw new ApiError(0, 'Sem internet e esta tela ainda não foi aberta neste aparelho')
