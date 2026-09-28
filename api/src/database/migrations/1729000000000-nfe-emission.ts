@@ -7,7 +7,7 @@ export class NfeEmission1729000000000 implements MigrationInterface {
 
   async up(q: QueryRunner) {
     await q.query(`ALTER TABLE sales_invoices ALTER COLUMN sefaz_status SET DEFAULT 'pendente'`)
-    await q.query(`UPDATE sales_invoices SET sefaz_status = 'pendente' WHERE sefaz_status = 'nao_transmitida'`)
+    await q.query(`UPDATE sales_invoices SET sefaz_status = 'pendente' WHERE sefaz_status IS NULL OR sefaz_status NOT IN ('pendente', 'autorizada', 'rejeitada', 'denegada', 'cancelada', 'erro')`)
     await q.query(`ALTER TABLE sales_invoices ADD CONSTRAINT sales_invoices_sefaz_status CHECK (sefaz_status IN ('pendente', 'autorizada', 'rejeitada', 'denegada', 'cancelada', 'erro'))`)
     await q.query(`ALTER TABLE sales_invoices ADD COLUMN access_key char(44), ADD COLUMN environment varchar(12) CHECK (environment IN ('homologacao', 'producao')),
       ADD COLUMN sefaz_code varchar(4), ADD COLUMN sefaz_message text, ADD COLUMN protocol varchar(20), ADD COLUMN authorized_at timestamptz,
