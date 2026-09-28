@@ -16,6 +16,7 @@ async function call(token, method, path, body, expect) {
 }
 const cnpj = (b) => { const dv = (s, w) => { const r = s.split('').reduce((a, d, i) => a + d * w[i], 0) % 11; return r < 2 ? 0 : 11 - r }; const d1 = dv(b, [5,4,3,2,9,8,7,6,5,4,3,2]); return b + d1 + dv(b + d1, [6,5,4,3,2,9,8,7,6,5,4,3,2]) }
 
+const IE = { ES: '082560013', AM: '043413412', MS: '283115947', AC: '0100482300112', AL: '240000048', AP: '030123459', BA: '12345663', CE: '060000015', DF: '0730000100109', GO: '109876547', MA: '120000385', MT: '00130000019', MG: '0623079040081', PA: '159999995', PB: '060000015', PR: '1234567850', PE: '032141840', PI: '012345679', RJ: '99999993', RN: '200400401', RS: '2243658792', RO: '00000000625213', RR: '240066281', SC: '251040852', SP: '110042490114', SE: '271234563', TO: '29010227836' } // exemplos válidos das SEFAZ
 console.log('Cadastros, Fiscal e Configurações')
 const admin = (await call(null, 'POST', '/auth/login', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })).token
 const pass = 'Senha-forte-123'
@@ -51,7 +52,7 @@ assert.equal(ncm.ipiRate, 5.5)
 ok('NCM validado (8 dígitos) com alíquota de IPI')
 
 await call(tCad, 'POST', '/catalog/customers', { document: '11111111111', name: 'x' }, 400)
-const cust = await call(tCad, 'POST', '/catalog/customers', { document: cnpj(String(Date.now()).slice(-12)), name: 'Cliente RJ', taxpayer: '1', uf: 'rj', zip: '20040002' })
+const cust = await call(tCad, 'POST', '/catalog/customers', { document: cnpj(String(Date.now()).slice(-12)), name: 'Cliente RJ', taxpayer: '1', ie: IE.RJ, uf: 'rj', zip: '20040002' })
 assert.equal(cust.uf, 'RJ')
 await call(tCad, 'PATCH', `/catalog/customers/${cust.id}`, { uf: 'XX' }, 400)
 ok('cliente com CPF/CNPJ validado e UF')

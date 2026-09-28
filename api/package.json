@@ -19,6 +19,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "fast-xml-parser": "^5.11.1",
+    "js-brasil": "^2.8.0",
     "node-forge": "^1.4.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",

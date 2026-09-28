@@ -4,6 +4,7 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { isAdmin } from '../common/access'
 import { digits, one } from '../common/db'
 import { isValidDocument } from '../purchasing/documents'
+import { ieValida, municipioPorCodigo, municipioPorNome } from '../common/br'
 import type { User } from '../users/user.entity'
 import { CUSTOMIZABLE, CustomFieldsService } from '../custom/custom-fields.service'
 import { REF_TARGETS, resource, RESOURCES, UFS, type FieldDef, type ResourceDef } from './resources'
@@ -165,12 +166,42 @@ export class CatalogController {
       out[f.column] = this.convert(f, v)
       if (f.required && (out[f.column] === null || out[f.column] === '')) throw new BadRequestException(`Informe ${f.label}`)
     }
+    this.address(def, out, current)
     // Empresa: o CRT da nota sai do regime tributário.
     if (def.name === 'companies' && out.tax_regime) out.crt = { simples: '1', simples_excesso: '2', mei: '4' }[out.tax_regime as string] ?? '3'
     const rule = RULES[def.name]
     const message = rule?.({ ...(current ?? {}), ...out })
     if (message) throw new BadRequestException(message)
     return out
+  }
+
+  // Cidade com código IBGE (vai no XML da nota) e inscrição estadual conferida pela UF.
+  private address(def: ResourceDef, out: Record<string, any>, current?: Record<string, any>) {
+    const has = (t: string) => def.fields.some((f) => f.type === t)
+    const val = (col: string) => (col in out ? out[col] : current?.[col] ?? null)
+    if (has('city') && ('city' in out || 'uf' in out || 'city_code' in out)) {
+      const city = val('city'), uf = val('uf')
+      if (!city) out.city_code = null
+      else {
+        if (!uf) throw new BadRequestException('Informe a UF antes da cidade')
+        const byCode = out.city_code ? municipioPorCodigo(out.city_code) : undefined
+        const m = byCode && byCode.uf === uf ? byCode : municipioPorNome(uf, city)
+        if (!m) throw new BadRequestException(`Cidade "${city}" não encontrada em ${uf} (lista do IBGE)`)
+        out.city = m.name
+        out.city_code = m.code
+      }
+    }
+    if (has('ie') && ('ie' in out || 'uf' in out)) {
+      const ie = val('ie'), uf = val('uf')
+      if (ie) {
+        if (!uf) throw new BadRequestException('Informe a UF para conferir a inscrição estadual')
+        if (!ieValida(ie, uf)) throw new BadRequestException(`Inscrição estadual inválida para ${uf}`)
+      }
+    }
+    if ('taxpayer' in out || 'ie' in out) {
+      const taxpayer = val('taxpayer'), ie = val('ie')
+      if (taxpayer === '1' && (!ie || ie === 'ISENTO')) throw new BadRequestException('Contribuinte de ICMS precisa da inscrição estadual')
+    }
   }
 
   private convert(f: FieldDef, v: unknown): unknown {
@@ -212,6 +243,34 @@ export class CatalogController {
       case 'ref':
         if (typeof v !== 'string' || !UUID.test(v)) fail('seleção inválida')
         return v
+      case 'phone': {
+        const d = digits(String(v))
+        if (!d) return null
+        if (d.length < 10 || d.length > 11) fail('use DDD + número (10 ou 11 dígitos)')
+        return d
+      }
+      case 'zip': {
+        const d = digits(String(v))
+        if (!d) return null
+        if (d.length !== 8) fail('CEP com 8 dígitos')
+        return d
+      }
+      case 'city':
+        if (typeof v !== 'string') fail('cidade inválida')
+        return (v as string).trim() || null
+      case 'ie': {
+        if (typeof v !== 'string') fail('inscrição inválida')
+        const s = (v as string).trim().toUpperCase()
+        if (!s) return null
+        if (s === 'ISENTO') return s
+        const d = digits(s)
+        if (!d || d.length > 14) fail('use só números ou ISENTO')
+        return d
+      }
+      case 'json':
+        if (typeof v !== 'object' || Array.isArray(v)) fail('dados inválidos')
+        if (JSON.stringify(v).length > 20000) fail('dados grandes demais')
+        return JSON.stringify(v)
     }
   }
 

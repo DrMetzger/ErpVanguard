@@ -83,8 +83,10 @@ export class InvoicesController {
         const s = nfe.supplier
         supplier = await one(
           tx,
-          `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [cnpj, s.name, s.tradeName, s.email, s.phone, s.city, s.uf],
+          `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, ie, zip, street, number, complement, district, city_code)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+          [cnpj, s.name, s.tradeName, s.email, s.phone ? digits(s.phone).slice(0, 11) || null : null, s.city, s.uf, s.ie ? (s.ie.toUpperCase() === 'ISENTO' ? 'ISENTO' : digits(s.ie)) : null,
+            s.zip ? digits(s.zip).slice(0, 8) || null : null, s.street, s.number, s.complement, s.district, s.cityCode && /^\d{7}$/.test(s.cityCode) ? s.cityCode : null],
         )
       }
 

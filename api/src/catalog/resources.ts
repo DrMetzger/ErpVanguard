@@ -1,6 +1,7 @@
 import type { Permission } from '../users/user.entity'
 
-export type FieldType = 'text' | 'int' | 'decimal' | 'bool' | 'date' | 'enum' | 'ref' | 'uf' | 'document'
+// phone/zip: só números, com máscara na tela; city: lista de municípios da UF (preenche cityCode); ie: validada pela UF; json: dados guardados (ex.: Receita).
+export type FieldType = 'text' | 'int' | 'decimal' | 'bool' | 'date' | 'enum' | 'ref' | 'uf' | 'document' | 'phone' | 'zip' | 'city' | 'ie' | 'json'
 
 export interface FieldDef {
   key: string
@@ -18,6 +19,7 @@ export interface FieldDef {
   default?: string | number | boolean
   help?: string
   span?: 1 | 2 | 3
+  hidden?: boolean // não aparece no formulário (preenchido pelo sistema)
 }
 
 export interface ResourceDef {
@@ -48,12 +50,27 @@ export const REGIMES = [
 ]
 const TAXES = [{ value: 'ICMS', label: 'ICMS' }, { value: 'ICMS_ST', label: 'ICMS-ST (substituição tributária)' }, { value: 'IPI', label: 'IPI' }, { value: 'PIS', label: 'PIS' }, { value: 'COFINS', label: 'COFINS' }]
 const TAXPAYER = [{ value: '1', label: 'Contribuinte de ICMS' }, { value: '2', label: 'Contribuinte isento' }, { value: '9', label: 'Não contribuinte' }]
+// Endereço completo: CEP busca o resto; UF antes da cidade (a cidade vem da lista do IBGE).
+const address = (ufRequired = false): FieldDef[] => [
+  { key: 'zip', column: 'zip', label: 'CEP', type: 'zip', help: 'Digite o CEP e o endereço é preenchido' },
+  { key: 'uf', column: 'uf', label: 'UF', type: 'uf', required: ufRequired, list: true },
+  { key: 'city', column: 'city', label: 'Cidade', type: 'city', max: 100, list: true },
+  { key: 'street', column: 'street', label: 'Endereço', type: 'text', max: 200, span: 2 },
+  { key: 'number', column: 'number', label: 'Número', type: 'text', max: 20 },
+  { key: 'complement', column: 'complement', label: 'Complemento', type: 'text', max: 100 },
+  { key: 'district', column: 'district', label: 'Bairro', type: 'text', max: 100 },
+  { key: 'cityCode', column: 'city_code', label: 'Código IBGE do município', type: 'text', pattern: '^\\d{7}$', patternMessage: 'Código IBGE com 7 dígitos', hidden: true },
+]
+const email: FieldDef = { key: 'email', column: 'email', label: 'E-mail', type: 'text', max: 200, pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessage: 'E-mail inválido' }
+const receita: FieldDef[] = [
+  { key: 'cnae', column: 'cnae', label: 'CNAE principal', type: 'text', max: 250, hidden: true },
+  { key: 'receita', column: 'receita', label: 'Dados da Receita', type: 'json', hidden: true },
+]
 const active: FieldDef = { key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true, list: true }
 
 // Tabelas que podem ser referenciadas (inclusive as que têm tela própria).
 export const REF_TARGETS: Record<string, { table: string; labelExpr: string; search: string[] }> = {
   products: { table: 'products', labelExpr: "sku || ' · ' || name", search: ['sku', 'name'] },
-  suppliers: { table: 'suppliers', labelExpr: 'name', search: ['name', 'cnpj'] },
 }
 
 export const RESOURCES: ResourceDef[] = [
@@ -69,16 +86,11 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'tradeName', column: 'trade_name', label: 'Nome fantasia', type: 'text', max: 200 },
       { key: 'taxRegime', column: 'tax_regime', label: 'Regime tributário', type: 'enum', options: REGIMES, default: 'presumido', required: true, list: true, help: 'Define CST ou CSOSN, PIS/COFINS e o CRT da nota' },
       { key: 'snCreditRate', column: 'sn_credit_rate', label: 'Alíquota de crédito do Simples (%)', type: 'decimal', help: 'Para CSOSN 101/201 (pCredSN)' },
-      { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'text', max: 20 },
+      { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'ie', max: 20 },
       { key: 'im', column: 'im', label: 'Inscrição municipal', type: 'text', max: 20 },
-      { key: 'email', column: 'email', label: 'E-mail', type: 'text', max: 200, pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessage: 'E-mail inválido' },
-      { key: 'phone', column: 'phone', label: 'Telefone', type: 'text', max: 30 },
-      { key: 'zip', column: 'zip', label: 'CEP', type: 'text', pattern: '^\\d{8}$', patternMessage: 'CEP com 8 dígitos' },
-      { key: 'street', column: 'street', label: 'Endereço', type: 'text', max: 200, span: 2 },
-      { key: 'number', column: 'number', label: 'Número', type: 'text', max: 20 },
-      { key: 'district', column: 'district', label: 'Bairro', type: 'text', max: 100 },
-      { key: 'city', column: 'city', label: 'Cidade', type: 'text', max: 100, list: true },
-      { key: 'uf', column: 'uf', label: 'UF', type: 'uf', required: true, list: true },
+      email,
+      { key: 'phone', column: 'phone', label: 'Telefone', type: 'phone' },
+      ...address(true),
       active,
     ],
   },
@@ -127,16 +139,32 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'document', column: 'document', label: 'CPF/CNPJ', type: 'document', required: true, list: true },
       { key: 'name', column: 'name', label: 'Nome / razão social', type: 'text', required: true, max: 200, list: true, span: 2 },
       { key: 'tradeName', column: 'trade_name', label: 'Nome fantasia', type: 'text', max: 200, span: 2 },
-      { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'text', max: 20 },
+      { key: 'contact', column: 'contact', label: 'Contato', type: 'text', max: 120, help: 'Pessoa com quem falar' },
       { key: 'taxpayer', column: 'taxpayer', label: 'Contribuinte', type: 'enum', options: TAXPAYER, default: '9', required: true, list: true },
-      { key: 'email', column: 'email', label: 'E-mail', type: 'text', max: 200, pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', patternMessage: 'E-mail inválido' },
-      { key: 'phone', column: 'phone', label: 'Telefone', type: 'text', max: 30 },
-      { key: 'zip', column: 'zip', label: 'CEP', type: 'text', pattern: '^\\d{8}$', patternMessage: 'CEP com 8 dígitos' },
-      { key: 'street', column: 'street', label: 'Endereço', type: 'text', max: 200, span: 2 },
-      { key: 'number', column: 'number', label: 'Número', type: 'text', max: 20 },
-      { key: 'district', column: 'district', label: 'Bairro', type: 'text', max: 100 },
-      { key: 'city', column: 'city', label: 'Cidade', type: 'text', max: 100, list: true },
-      { key: 'uf', column: 'uf', label: 'UF', type: 'uf', list: true },
+      { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'ie', max: 20 },
+      email,
+      { key: 'phone', column: 'phone', label: 'Telefone', type: 'phone', list: true },
+      { key: 'phone2', column: 'phone2', label: 'Celular / telefone 2', type: 'phone' },
+      ...address(),
+      ...receita,
+      active,
+    ],
+  },
+  {
+    name: 'suppliers', module: 'cadastros', title: 'Fornecedores', singular: 'fornecedor', description: 'De quem você compra. Também são cadastrados sozinhos ao importar um XML.',
+    table: 'suppliers', labelExpr: 'name', search: ['name', 'trade_name', 'cnpj', 'city'], order: 'name', write: ['cadastro', 'comprador'],
+    constraints: { suppliers_cnpj_key: 'Já existe um fornecedor com este CNPJ/CPF' },
+    fields: [
+      { key: 'cnpj', column: 'cnpj', label: 'CNPJ/CPF', type: 'document', required: true, list: true },
+      { key: 'name', column: 'name', label: 'Razão social', type: 'text', required: true, max: 200, list: true, span: 2 },
+      { key: 'tradeName', column: 'trade_name', label: 'Nome fantasia', type: 'text', max: 200, span: 2 },
+      { key: 'contact', column: 'contact', label: 'Contato', type: 'text', max: 120, list: true, help: 'Pessoa com quem falar' },
+      { key: 'ie', column: 'ie', label: 'Inscrição estadual', type: 'ie', max: 20 },
+      email,
+      { key: 'phone', column: 'phone', label: 'Telefone', type: 'phone', list: true },
+      { key: 'phone2', column: 'phone2', label: 'Celular / telefone 2', type: 'phone' },
+      ...address(),
+      ...receita,
       active,
     ],
   },

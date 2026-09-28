@@ -239,7 +239,7 @@ export interface Notice {
   createdAt: string
 }
 
-export type FieldType = 'text' | 'int' | 'decimal' | 'bool' | 'date' | 'enum' | 'ref' | 'uf' | 'document'
+export type FieldType = 'text' | 'int' | 'decimal' | 'bool' | 'date' | 'enum' | 'ref' | 'uf' | 'document' | 'phone' | 'zip' | 'city' | 'ie' | 'json'
 
 export interface FieldDef {
   key: string
@@ -256,6 +256,7 @@ export interface FieldDef {
   default?: string | number | boolean
   help?: string
   span?: 1 | 2 | 3
+  hidden?: boolean
 }
 
 export interface ResourceMeta {

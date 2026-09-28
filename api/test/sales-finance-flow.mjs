@@ -18,6 +18,7 @@ const r12 = () => String(Math.floor(Math.random() * 1e12)).padStart(12, '4')
 const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 const plus = (days) => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 
+const IE = { ES: '082560013', AM: '043413412', MS: '283115947', AC: '0100482300112', AL: '240000048', AP: '030123459', BA: '12345663', CE: '060000015', DF: '0730000100109', GO: '109876547', MA: '120000385', MT: '00130000019', MG: '0623079040081', PA: '159999995', PB: '060000015', PR: '1234567850', PE: '032141840', PI: '012345679', RJ: '99999993', RN: '200400401', RS: '2243658792', RO: '00000000625213', RR: '240066281', SC: '251040852', SP: '110042490114', SE: '271234563', TO: '29010227836' } // exemplos válidos das SEFAZ
 console.log('Faturamento, Financeiro e BI')
 const admin = (await call(null, 'POST', '/auth/login', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })).token
 const pass = 'Senha-forte-123'
@@ -37,8 +38,8 @@ if (!companies.some((c) => c.isHead)) {
   await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
 }
 const head = (await call(admin, 'GET', '/companies/branding'))
-const custSP = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente SP ' + run, uf: head.uf, taxpayer: '1', city: 'Campinas' })
-const custRJ = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente RJ ' + run, uf: head.uf === 'RJ' ? 'MG' : 'RJ', taxpayer: '1' })
+const custSP = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente SP ' + run, uf: head.uf, taxpayer: '1', ie: IE[head.uf], city: head.uf === 'SP' ? 'Campinas' : undefined })
+const custRJ = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente RJ ' + run, uf: head.uf === 'RJ' ? 'MG' : 'RJ', taxpayer: '1', ie: head.uf === 'RJ' ? IE.MG : IE.RJ })
 const prodA = await call(admin, 'POST', '/products', { sku: `VA-${run}`, name: 'Furadeira 500W', unit: 'UN', costPrice: 120, salePrice: 199.9, stock: 10, minStock: 2 })
 const prodB = await call(admin, 'POST', '/products', { sku: `VB-${run}`, name: 'Broca 8mm', unit: 'UN', costPrice: 4, salePrice: 9.5, stock: 100 })
 const terms = await call(admin, 'GET', '/catalog/payment-terms')
@@ -225,7 +226,7 @@ assert.equal((await call(tFin, 'GET', '/finance/bank-balances')).find((b) => b.i
 ok('devolução de venda (E05/TES 004): estoque volta pelo custo atual, NCC de R$ 210 abate o contas a receber e, ao devolver o dinheiro, sai do banco')
 
 // Devolução de compra: devolvemos 5 brocas ao fornecedor → estoque sai e gera NDF no contas a pagar
-const custFromSup = await call(admin, 'POST', '/catalog/customers', { document: supNf.cnpj, name: supNf.name, uf: head.uf, taxpayer: '1' })
+const custFromSup = await call(admin, 'POST', '/catalog/customers', { document: supNf.cnpj, name: supNf.name, uf: head.uf, taxpayer: '1', ie: IE[head.uf] })
 const payBefore = (await call(tFin, 'GET', '/finance/summary')).payable
 const ret = await call(tVend, 'POST', '/sales-orders', { customerId: custFromSup.id, operationTypeId: opS03.id, paymentTermId: vista.id, items: [{ productId: prodB.id, quantity: 5, unitPrice: 4 }] })
 assert.equal(ret.items[0].cfop, '5202')

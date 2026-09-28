@@ -8,3 +8,4 @@ erpvanguard-site.zip
 node_modules/
 *.tsbuildinfo
 media/
+.claude/worktrees/

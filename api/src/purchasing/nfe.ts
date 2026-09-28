@@ -21,7 +21,7 @@ export interface Nfe {
   series: string | null
   issueDate: string | null
   total: number
-  supplier: { cnpj: string; name: string; tradeName: string | null; city: string | null; uf: string | null; phone: string | null; email: string | null }
+  supplier: { cnpj: string; name: string; tradeName: string | null; city: string | null; uf: string | null; phone: string | null; email: string | null; ie: string | null; zip: string | null; street: string | null; number: string | null; complement: string | null; district: string | null; cityCode: string | null }
   recipientDocument: string | null
   orderNumber: string | null
   // Duplicatas (cobr/dup): parcelas a pagar informadas pelo fornecedor.
@@ -92,6 +92,8 @@ export function parseNfe(xml: string): Nfe {
       uf: text(emit.enderEmit?.UF),
       phone: text(emit.enderEmit?.fone),
       email: text(emit.email),
+      ie: text(emit.IE), zip: text(emit.enderEmit?.CEP), street: text(emit.enderEmit?.xLgr), number: text(emit.enderEmit?.nro),
+      complement: text(emit.enderEmit?.xCpl), district: text(emit.enderEmit?.xBairro), cityCode: text(emit.enderEmit?.cMun),
     },
     recipientDocument: text(inf.dest?.CNPJ) ?? text(inf.dest?.CPF),
     orderNumber: text(compra?.xPed) ?? items.find((i) => i.orderNumber)?.orderNumber ?? null,

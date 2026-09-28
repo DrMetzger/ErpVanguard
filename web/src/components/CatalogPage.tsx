@@ -11,6 +11,8 @@ import type { CatalogRow, FieldDef, ResourceMeta } from '../lib/types'
 import { applyLayout, useCustomization, type Customization } from '../lib/custom'
 import { customBody, customDisplay, CustomFieldsInputs } from './CustomFields'
 import { BrNumber } from './inputs'
+import { CitySelect, DocumentInput, IeInput, PhoneInput, ReceitaPanel, ZipInput } from './BrFields'
+import { applyMask } from '../lib/mask'
 import { Empty, Loading } from './ui'
 
 function display(f: FieldDef, row: CatalogRow): ReactNode {
@@ -23,11 +25,14 @@ function display(f: FieldDef, row: CatalogRow): ReactNode {
     case 'date': return date(String(v))
     case 'decimal': return qty(Number(v))
     case 'document': return <Text span ff="monospace" fz="sm">{cnpj(String(v))}</Text>
+    case 'phone': return <Text span style={{ whiteSpace: 'nowrap' }}>{applyMask('telefone', String(v))}</Text>
+    case 'zip': return applyMask('cep', String(v))
+    case 'json': return '…'
     default: return String(v)
   }
 }
 
-const LOOKUP = ['customers', 'companies']
+const LOOKUP = ['customers', 'companies', 'suppliers']
 
 // Tela de cadastro montada a partir da descrição vinda da API.
 export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (row: CatalogRow) => ReactNode }) {
@@ -99,9 +104,15 @@ function RefSelect({ field, value, onChange }: { field: FieldDef; value: unknown
   )
 }
 
-function Field({ field, value, onChange, onLookup }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void; onLookup?: () => void }) {
+function Field({ field, value, onChange, onLookup, form, patch, busy }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void; onLookup?: () => void; form: Record<string, unknown>; patch: (v: Record<string, unknown>) => void; busy?: boolean }) {
   const common = { label: field.label, description: field.help, required: field.required }
+  const uf = String(form.uf ?? '')
   switch (field.type) {
+    case 'document': return <DocumentInput field={field} value={value} onChange={onChange} onLookup={onLookup} busy={busy} />
+    case 'phone': return <PhoneInput field={field} value={value} onChange={onChange} />
+    case 'zip': return <ZipInput field={field} value={value} onChange={onChange} patch={patch} />
+    case 'city': return <CitySelect field={field} value={value} uf={uf} patch={patch} />
+    case 'ie': return <IeInput field={field} value={value} uf={uf} onChange={onChange} />
     case 'bool': return <Switch label={field.label} checked={!!value} onChange={(e) => onChange(e.currentTarget.checked)} mt="lg" />
     case 'ref': return <RefSelect field={field} value={value} onChange={onChange} />
     case 'enum':
@@ -113,25 +124,28 @@ function Field({ field, value, onChange, onLookup }: { field: FieldDef; value: u
     case 'date': return <TextInput {...common} type="date" value={(value as string) ?? ''} onChange={(e) => onChange(e.currentTarget.value)} />
     default:
       return <TextInput {...common} maxLength={field.max} value={(value as string) ?? ''} onChange={(e) => onChange(e.currentTarget.value)}
-        styles={field.upper ? { input: { textTransform: 'uppercase' } } : undefined} inputMode={field.type === 'document' ? 'numeric' : undefined}
-        rightSectionWidth={onLookup ? 92 : undefined}
-        rightSection={onLookup ? <Button size="compact-xs" variant="light" onClick={onLookup} aria-label="Buscar na Receita">Receita</Button> : undefined} />
+        styles={field.upper ? { input: { textTransform: 'uppercase' } } : undefined} />
   }
 }
 
 function CatalogForm({ meta, custom, row, onClose, onSaved }: { meta: ResourceMeta; custom: Customization | null; row: Partial<CatalogRow>; onClose: () => void; onSaved: () => void }) {
   const isNew = !row.id
   const [form, setForm] = useState<Record<string, unknown>>(() =>
-    Object.fromEntries(meta.fields.map((f) => [f.key, row[f.key] ?? (isNew ? f.default ?? (f.type === 'bool' ? false : '') : f.type === 'bool' ? false : '')])),
+    Object.fromEntries(meta.fields.map((f) => [f.key, row[f.key] ?? (f.type === 'json' ? null : isNew ? f.default ?? (f.type === 'bool' ? false : '') : f.type === 'bool' ? false : '')])),
   )
   const [extra, setExtra] = useState<Record<string, unknown>>(() => ({ ...((row.custom as Record<string, unknown>) ?? {}) }))
   const { busy, run } = useAction()
+  const lookupAction = useAction()
+  const patch = (v: Record<string, unknown>) => setForm((s) => ({ ...s, ...v }))
   // Preenche com os dados da Receita Federal (só campos que existem neste cadastro)
-  const lookup = (doc: string) => run(async () => {
+  const lookup = (doc: string) => lookupAction.run(async () => {
     const d = await api<Record<string, unknown>>(`/cnpj/${doc.replace(/\D/g, '')}`)
-    setForm((s) => ({ ...s, ...Object.fromEntries(meta.fields.filter((f) => d[f.key] !== undefined && d[f.key] !== null && f.type !== 'document').map((f) => [f.key, d[f.key]])) }))
-    if (d.situation && d.situation !== 'ATIVA') throw new Error(`Situação na Receita: ${d.situation}`)
+    setForm((s) => ({ ...s, ...Object.fromEntries(meta.fields.filter((f) => d[f.key] !== undefined && d[f.key] !== null && d[f.key] !== '' && f.type !== 'document').map((f) => [f.key, d[f.key]])) }))
+    if (d.situation && d.situation !== 'ATIVA') throw new Error(`Atenção: situação na Receita é ${d.situation}`)
   }, 'Dados da Receita preenchidos')
+  // Trocar a UF limpa a cidade (a lista de municípios muda).
+  const change = (f: FieldDef, v: unknown) => setForm((s) => (f.type === 'uf' && v !== s[f.key] && meta.fields.some((x) => x.type === 'city') ? { ...s, [f.key]: v, city: '', cityCode: '' } : { ...s, [f.key]: v }))
+  const receitaField = meta.fields.find((f) => f.type === 'json' && f.key === 'receita')
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -151,12 +165,13 @@ function CatalogForm({ meta, custom, row, onClose, onSaved }: { meta: ResourceMe
     <Modal opened onClose={onClose} title={`${isNew ? 'Novo(a)' : 'Editar'} ${meta.singular}`} size="xl">
       <Stack component="form" onSubmit={submit}>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
-          {meta.fields.map((f) => (
+          {meta.fields.filter((f) => !f.hidden).map((f) => (
             <div key={f.key} style={{ gridColumn: f.span && f.span > 1 ? `span ${f.span}` : undefined }} className="catalog-field">
-              <Field field={f} value={form[f.key]} onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))} onLookup={f.type === 'document' && LOOKUP.includes(meta.name) ? () => lookup(String(form[f.key] ?? '')) : undefined} />
+              <Field field={f} value={form[f.key]} form={form} patch={patch} busy={lookupAction.busy} onChange={(v) => change(f, v)} onLookup={f.type === 'document' && LOOKUP.includes(meta.name) ? () => lookup(String(form[f.key] ?? '')) : undefined} />
             </div>
           ))}
         </SimpleGrid>
+        {receitaField && <ReceitaPanel data={form.receita} />}
         <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
       </Stack>

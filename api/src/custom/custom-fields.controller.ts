@@ -48,14 +48,10 @@ const STANDARD: Record<string, { key: string; label: string; required?: boolean 
     { key: 'origin', label: 'Origem da mercadoria' }, { key: 'costPrice', label: 'Custo' }, { key: 'salePrice', label: 'Preço de venda' },
     { key: 'minStock', label: 'Estoque mínimo' },
   ],
-  suppliers: [
-    { key: 'cnpj', label: 'CNPJ/CPF', required: true }, { key: 'name', label: 'Razão social', required: true }, { key: 'tradeName', label: 'Nome fantasia' },
-    { key: 'email', label: 'E-mail' }, { key: 'phone', label: 'Telefone' }, { key: 'city', label: 'Cidade' }, { key: 'uf', label: 'UF' },
-  ],
 }
 const HAS_OPTIONS: string[] = ['select', 'radio', 'multiselect']
 const standardFields = (resource: string) =>
-  STANDARD[resource] ?? RESOURCES.find((r) => r.name === resource)?.fields.filter((f) => f.key !== 'active').map((f) => ({ key: f.key, label: f.label, required: !!f.required })) ?? []
+  STANDARD[resource] ?? RESOURCES.find((r) => r.name === resource)?.fields.filter((f) => f.key !== 'active' && !f.hidden).map((f) => ({ key: f.key, label: f.label, required: !!f.required })) ?? []
 
 @Controller('custom-fields')
 export class CustomFieldsController {

@@ -8,7 +8,6 @@ import { ModuleTabs } from '../../components/ModuleTabs'
 import { FiscalMatrix } from './Fiscal'
 import PriceTables from './PriceTables'
 import Products from './Products'
-import Suppliers from './Suppliers'
 import { SerasaButton } from './Serasa'
 
 
@@ -34,7 +33,7 @@ export default function Cadastros() {
       } />
       <Route path="parceiros/*" element={
         <ModuleTabs base="/cadastros/parceiros" title="Cadastros · Clientes e fornecedores" tabs={[
-          { path: 'fornecedores', label: 'Fornecedores', icon: IconBuildingStore, element: <Suppliers /> },
+          { path: 'fornecedores', label: 'Fornecedores', icon: IconBuildingStore, element: <CatalogPage name="suppliers" /> },
           { path: 'clientes', label: 'Clientes', icon: IconUsersGroup, element: <CatalogPage name="customers" rowActions={(row) => <SerasaButton id={row.id} name={String(row.name)} />} /> },
           { path: 'produto-fornecedor', label: 'Produto × Fornecedor', icon: IconLink, element: <CatalogPage name="supplier-products" /> },
         ]} />
