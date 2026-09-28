@@ -40,3 +40,15 @@ export async function api<T = unknown>(path: string, options: { method?: Method;
   }
   return data as T
 }
+
+// Arquivo da API (XML, PDF) com o token: devolve o conteúdo e o nome sugerido pelo servidor.
+export async function apiFile(path: string): Promise<{ blob: Blob; name: string }> {
+  const token = getToken()
+  const res = await fetch(`${API_URL}/api${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new ApiError(res.status, data?.message || 'Erro ao baixar o arquivo', data)
+  }
+  const name = res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] ?? 'arquivo'
+  return { blob: await res.blob(), name }
+}

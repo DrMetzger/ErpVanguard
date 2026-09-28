@@ -44,6 +44,10 @@ export interface SalesInvoice {
   customerDistrict: string | null; customerCity: string | null; customerUf: string | null; customerZip: string | null
   items: { itemNumber: number; sku: string; description: string; ncm: string | null; unit: string; cfop: string; tesCode: string; quantity: number; unitPrice: number; total: number; taxes: ItemTaxes | null }[]
   taxes: TaxTotals | null
+  // NF-e na SEFAZ
+  accessKey: string | null; environment: string | null; certificateEnvironment: string | null; sefazCode: string | null; sefazMessage: string | null
+  protocol: string | null; authorizedAt: string | null; hasXml: boolean; hasProc: boolean
+  nfeEvents: { id: string; type: string; sequence: number | null; environment: string; text: string | null; statusCode: string | null; message: string | null; protocol: string | null; success: boolean; createdAt: string; userName: string | null }[]
   titles: { id: string; kind: 'R' | 'P'; docType: string; installment: number; installments: number; dueDate: string; amount: number; paidAmount: number; status: string }[]
 }
 export interface Readiness {

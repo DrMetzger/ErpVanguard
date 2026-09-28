@@ -274,7 +274,9 @@ export class SalesController {
       db,
       `SELECT i.id, i.number, i.series, i.issued_at AS "issuedAt", i.products_total AS "productsTotal", i.freight, i.discount, i.total, i.status,
               i.sefaz_status AS "sefazStatus", i.cancel_reason AS "cancelReason", i.access_key AS "accessKey", i.environment, i.sefaz_code AS "sefazCode",
-              i.sefaz_message AS "sefazMessage", i.protocol, i.authorized_at AS "authorizedAt", i.xml IS NOT NULL AS "hasXml", i.xml_proc IS NOT NULL AS "hasProc", i.order_id AS "orderId", o.number AS "orderNumber", i.taxes,
+              i.sefaz_message AS "sefazMessage", i.protocol, i.authorized_at AS "authorizedAt", i.xml IS NOT NULL AS "hasXml", i.xml_proc IS NOT NULL AS "hasProc",
+              (SELECT c.environment FROM certificates c JOIN companies cc ON cc.id = c.company_id WHERE c.active AND (c.company_id = i.company_id OR left(cc.document, 8) = left(co.document, 8))
+               ORDER BY (c.company_id = i.company_id) DESC, cc.is_head DESC LIMIT 1) AS "certificateEnvironment", i.order_id AS "orderId", o.number AS "orderNumber", i.taxes,
               ot.code || ' · ' || ot.name AS "operationLabel", i.company_id AS "companyId", i.model,
               co.tax_regime AS "taxRegime", co.code || ' · ' || coalesce(co.trade_name, co.name) AS "companyLabel",
               i.cost_center_id AS "costCenterId", (SELECT code || ' · ' || name FROM cost_centers WHERE id = i.cost_center_id) AS "costCenter",

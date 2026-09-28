@@ -10,7 +10,7 @@ import type { ItemTaxes } from '../taxes/tax-engine'
 import { buildNfeXml, brasiliaDateTime, d2, onlyDigits, randomCNF, UF_CODE, type NfeInput } from './nfe-xml'
 import {
   AuditTransport, authorize, autorizadorOf, cancelEvent, certificateFromPfx, consultKey, correctionEvent, hasUrls, hintFor, nfeProc, serviceStatus,
-  signXml, validateXsd, voidRange, type AuthResult, type Environment,
+  signXml, summarize, validateXsd, voidRange, type AuthResult, type Environment,
 } from './sefaz'
 
 const CRT: Record<string, '1' | '2' | '3' | '4'> = { simples: '1', simples_excesso: '2', mei: '4', presumido: '3', real: '3' }
@@ -153,12 +153,13 @@ export class NfeService {
     const calls = e.transport?.calls.length ? e.transport.calls : [null]
     for (const [i, call] of calls.entries()) {
       const last = i === calls.length - 1
-      const type = !last && call?.service === 'nfeConsultaNF' ? 'consulta' : e.type
+      const type = ['nfeConsultaNF', 'nfeRetAutorizacaoLote'].includes(call?.service ?? '') ? 'consulta' : e.type
+      const own = summarize(call?.response ?? null)
       await tx.query(
         `INSERT INTO nfe_events (invoice_id, company_id, type, environment, sequence, series, number_from, number_to, text, request_xml, response_xml, status_code, message, protocol, success, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [e.invoiceId ?? null, e.companyId, type, e.environment, e.sequence ?? null, e.series ?? null, e.from ?? null, e.to ?? null, e.text ?? null,
-          call?.request ?? null, call?.response ?? null, last ? e.result?.cStat ?? null : null, last ? (e.error ?? e.result?.xMotivo ?? null) : call?.error ?? null,
+          call?.request ?? null, call?.response ?? null, last ? e.result?.cStat ?? own.cStat : own.cStat, last ? (e.error ?? e.result?.xMotivo ?? own.xMotivo) : call?.error ?? own.xMotivo,
           last ? e.result?.nProt ?? null : null, last ? e.success : false, e.userId],
       )
     }

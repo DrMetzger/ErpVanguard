@@ -1,9 +1,10 @@
-import { Badge, Card, Group, Table, Text, TextInput } from '@mantine/core'
+import { Card, Group, Table, Text, TextInput } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { IconSearch } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Empty, Loading, Status } from '../../components/ui'
+import { SefazBadge } from './NfePanel'
 import { money } from '../../lib/format'
 import { useApi } from '../../lib/hooks'
 import type { SalesInvoiceRow } from './types'
@@ -44,7 +45,7 @@ export default function SalesInvoices() {
                     <Table.Td>{i.orderCode ?? '—'}</Table.Td>
                     <Table.Td ta="right" fw={600}>{money(i.total)}</Table.Td>
                     <Table.Td><Status value={i.status} /></Table.Td>
-                    <Table.Td><Badge variant="outline" color="gray" radius="sm">Não transmitida</Badge></Table.Td>
+                    <Table.Td><SefazBadge status={i.sefazStatus} /></Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>

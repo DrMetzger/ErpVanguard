@@ -1,5 +1,5 @@
-import { Alert, Anchor, Badge, Button, Card, Group, Modal, SimpleGrid, Stack, Table, Text, Textarea } from '@mantine/core'
-import { IconArrowLeft, IconInfoCircle, IconPrinter, IconX } from '@tabler/icons-react'
+import { Alert, Anchor, Button, Card, Group, Modal, SimpleGrid, Stack, Table, Text, Textarea } from '@mantine/core'
+import { IconArrowLeft, IconPrinter, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Loading, PageHeader, ReportHeader, Status } from '../../components/ui'
@@ -9,17 +9,19 @@ import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction, useApi } from '../../lib/hooks'
 import { dateTime } from './SalesInvoices'
 import { ItemTaxBadge, REGIMES, TaxTotalsBlock } from './TaxSummary'
+import { NfePanel, SefazBadge } from './NfePanel'
 import type { SalesInvoice } from './types'
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div><Text size="xs" c="dimmed" tt="uppercase" fw={700}>{label}</Text>{children}</div>
 )
 
-// Espelho da nota de saída (ainda não transmitida à SEFAZ).
+// Espelho da nota de saída e a NF-e na SEFAZ (XML, transmissão, DANFE e eventos).
 export default function SalesInvoiceDetail() {
   const { id } = useParams()
   const user = useUser()
   const { data: nf, error, setData } = useApi<SalesInvoice>(`/sales-invoices/${id}`)
+  const reload = async () => setData(await api<SalesInvoice>(`/sales-invoices/${id}`))
   const [canceling, setCanceling] = useState(false)
   const [reason, setReason] = useState('')
   const { busy, run } = useAction()
@@ -38,19 +40,18 @@ export default function SalesInvoiceDetail() {
         description={`${nf.model === '65' ? 'NFC-e' : 'NF-e'} série ${nf.series} · emitida em ${dateTime(nf.issuedAt)} · ${nf.operationLabel}${nf.orderCode ? ` · pedido ${nf.orderCode}` : ''} · ${nf.companyLabel}${nf.taxRegime ? ` · ${REGIMES[nf.taxRegime] ?? nf.taxRegime}` : ''}`}
         actions={<>
           <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => window.print()}>Imprimir espelho</Button>
-          {nf.status === 'emitida' && can(user, 'faturamento') && <Button variant="subtle" color="red" leftSection={<IconX size={16} />} onClick={() => setCanceling(true)}>Cancelar nota</Button>}
+          {nf.status === 'emitida' && !['autorizada', 'erro'].includes(nf.sefazStatus) && can(user, 'faturamento') && <Button variant="subtle" color="red" leftSection={<IconX size={16} />} onClick={() => setCanceling(true)}>Cancelar nota</Button>}
         </>}
       />
-      <Alert variant="light" icon={<IconInfoCircle size={18} />} mb="md" className="no-print">
-        Nota registrada no sistema (estoque e contas a receber já atualizados). A transmissão à SEFAZ com o certificado A1 e o DANFE oficial vêm na próxima etapa.
-      </Alert>
       {nf.status === 'cancelada' && <Alert color="gray" mb="md" title="Nota cancelada">{nf.cancelReason}</Alert>}
+
+      <NfePanel nf={nf} reload={reload} />
 
       <Card mb="md">
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
           <Fact label="Destinatário"><Text fw={600}>{nf.customerName}</Text><Text size="xs" c="dimmed" ff="monospace">{cnpj(nf.customerDocument)}{nf.customerIe && ` · IE ${nf.customerIe}`}</Text></Fact>
           <Fact label="Endereço"><Text size="sm">{address || '—'}</Text></Fact>
-          <Fact label="SEFAZ"><Badge variant="outline" color="gray" radius="sm" mt={4}>Não transmitida</Badge></Fact>
+          <Fact label="SEFAZ"><Group gap={4} mt={4}><SefazBadge status={nf.sefazStatus} /></Group></Fact>
           <Fact label="Total da nota"><Text fw={800} fz="xl">{money(nf.total)}</Text></Fact>
         </SimpleGrid>
       </Card>

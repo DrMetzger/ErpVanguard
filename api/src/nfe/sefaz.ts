@@ -102,6 +102,13 @@ export function nfeProc(signedNFe: string, protNFe: string) {
   return `<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00" xmlns="${NFE_NS}">${signedNFe.replace(/<\?xml[^?]*\?>\s*/g, '')}${prot}</nfeProc>`
 }
 
+// Código e motivo de uma resposta qualquer da SEFAZ (para o histórico de cada ida).
+export function summarize(response: string | null) {
+  if (!response) return { cStat: null, xMotivo: null }
+  const inner = response.match(/<(protNFe|retEvento|infInut)[^>]*>[\s\S]*?<\/\1>/)?.[0] ?? response
+  return { cStat: tagOf(inner, 'cStat'), xMotivo: tagOf(inner, 'xMotivo') }
+}
+
 export interface AuthResult { cStat: string; xMotivo: string; nProt?: string; dhRecbto?: string; protNFe?: string | null; nRec?: string | null }
 
 const soap = (wsdl: string, inner: string) =>
