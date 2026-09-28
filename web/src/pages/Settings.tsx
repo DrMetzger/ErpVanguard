@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Card, Group, PasswordInput, Select, SimpleGrid, Stack, Switch, TagsInput, Text, TextInput, ThemeIcon, Title } from '@mantine/core'
-import { IconBrain, IconBuilding, IconShieldCheck, IconCircleCheck, IconFileCode, IconKey, IconPlugConnected } from '@tabler/icons-react'
+import { IconBrain, IconBuilding, IconShieldCheck, IconCircleCheck, IconFileCode, IconKey, IconMail, IconPlugConnected, IconSend } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loading } from '../components/ui'
@@ -11,6 +11,10 @@ interface SettingsData {
   nfe: { autoAi: boolean }
   company: { name: string; cnpj: string; uf: string }
   serasa: { enabled: boolean; environment: 'homologacao' | 'producao'; clientId: string | null; secretHint: string | null }
+  smtp: {
+    configured: boolean; source: 'tela' | 'servidor' | 'nenhuma'; host: string | null; port: number; security: 'ssl' | 'starttls' | 'nenhuma'
+    user: string | null; passwordHint: string | null; fromName: string | null; fromEmail: string | null; replyTo: string | null
+  }
 }
 const SOURCE = { tela: 'Configurada nesta tela', servidor: 'Configurada no servidor (GitHub)', nenhuma: 'Não configurada' }
 
@@ -51,6 +55,8 @@ export default function Settings() {
         <Section icon={IconBuilding} title="Empresas, filiais, logo e certificado A1" description="Ficam em Administração › Empresas: dados de cada filial (a UF define CFOP 5xxx ou 6xxx), logo do DANFE e dos relatórios e o certificado digital.">
           <Group justify="flex-end"><Button component={Link} to="/empresas" variant="light">Abrir Administração › Empresas</Button></Group>
         </Section>
+
+        <SmtpSection data={data.smtp} onSaved={setData} />
 
         <SerasaSection data={data.serasa} onSaved={setData} />
 
@@ -95,6 +101,65 @@ export default function Settings() {
         </Section>
       </Stack>
     </>
+  )
+}
+
+// Servidor de e-mail (SMTP) para enviar orçamentos e pedidos. A senha fica criptografada e não volta para a tela.
+const SECURITY = [
+  { value: 'ssl', label: 'SSL/TLS (porta 465)' },
+  { value: 'starttls', label: 'STARTTLS (porta 587)' },
+  { value: 'nenhuma', label: 'Sem criptografia (rede interna)' },
+]
+function SmtpSection({ data, onSaved }: { data: SettingsData['smtp']; onSaved: (d: SettingsData) => void }) {
+  const initial = () => ({ host: data.host ?? '', port: data.port || 587, security: data.security, user: data.user ?? '', password: '', fromName: data.fromName ?? '', fromEmail: data.fromEmail ?? '', replyTo: data.replyTo ?? '' })
+  const [form, setForm] = useState(initial)
+  const [testTo, setTestTo] = useState('')
+  const [sent, setSent] = useState<string | null>(null)
+  const { busy, run } = useAction()
+  const set = (patch: Partial<ReturnType<typeof initial>>) => setForm({ ...form, ...patch })
+  const save = () => run(async () => {
+    const { password, ...rest } = form
+    onSaved(await api<SettingsData>('/settings/smtp', { method: 'PUT', body: { ...rest, port: Number(form.port), ...(password ? { password } : {}) } }))
+    setForm((f) => ({ ...f, password: '' }))
+  }, 'Servidor de e-mail salvo')
+  const test = () => run(async () => {
+    setSent(null)
+    const r = await api<{ to: string }>('/settings/smtp/test', { method: 'POST', body: testTo ? { to: testTo } : {} })
+    setSent(r.to)
+  })
+  return (
+    <Section icon={IconMail} title="E-mail (servidor SMTP)" description="Usado para enviar orçamentos e pedidos ao cliente. O texto dos e-mails fica em Administração › Modelos de e-mail.">
+      <Group mb="md" gap="xs">
+        <Badge color={data.configured ? 'teal' : 'gray'} variant="light" style={{ textTransform: 'none' }}>{SOURCE[data.source]}{data.configured && data.host && ` · ${data.host}:${data.port}`}</Badge>
+        {data.passwordHint && <Badge variant="light" color="gray" leftSection={<IconKey size={12} />} style={{ textTransform: 'none' }}>Senha salva {data.passwordHint}</Badge>}
+      </Group>
+      <Stack>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+          <TextInput label="Servidor (host)" placeholder="smtp.seudominio.com.br" value={form.host} onChange={(e) => set({ host: e.currentTarget.value.trim() })} autoComplete="off" />
+          <TextInput label="Porta" type="number" value={String(form.port)} onChange={(e) => set({ port: Number(e.currentTarget.value) })} />
+          <Select label="Segurança" data={SECURITY} value={form.security} allowDeselect={false}
+            onChange={(v) => set({ security: (v ?? 'starttls') as 'ssl', port: v === 'ssl' ? 465 : v === 'starttls' && form.port === 465 ? 587 : form.port })} />
+          <TextInput label="Usuário" placeholder="Em branco se o servidor não pede login" value={form.user} onChange={(e) => set({ user: e.currentTarget.value })} autoComplete="off" />
+          <PasswordInput label="Senha" placeholder={data.passwordHint ? 'Deixe vazio para manter' : ''} value={form.password} onChange={(e) => set({ password: e.currentTarget.value })} autoComplete="new-password" />
+          <div />
+          <TextInput label="Nome do remetente" placeholder="Vendas Empresa" value={form.fromName} onChange={(e) => set({ fromName: e.currentTarget.value })} />
+          <TextInput label="E-mail do remetente" placeholder="vendas@seudominio.com.br" value={form.fromEmail} onChange={(e) => set({ fromEmail: e.currentTarget.value.trim() })} />
+          <TextInput label="Responder para (opcional)" placeholder="comercial@seudominio.com.br" value={form.replyTo} onChange={(e) => set({ replyTo: e.currentTarget.value.trim() })} />
+        </SimpleGrid>
+        <Group justify="space-between" align="flex-end">
+          <Group align="flex-end" gap="xs">
+            <TextInput label="Enviar teste para" placeholder="Seu e-mail" value={testTo} onChange={(e) => setTestTo(e.currentTarget.value.trim())} w={240} />
+            <Button variant="light" leftSection={<IconSend size={16} />} disabled={!data.configured} loading={busy} onClick={test}>Enviar e-mail de teste</Button>
+            {data.source === 'tela' && data.passwordHint && (
+              <Button variant="subtle" color="red" onClick={() => confirm('Remover a senha salva?') && run(async () => onSaved(await api<SettingsData>('/settings/smtp', { method: 'PUT', body: { ...form, password: undefined, port: Number(form.port), clearPassword: true } })), 'Senha removida')}>Remover senha</Button>
+            )}
+          </Group>
+          <Button onClick={save} loading={busy} disabled={!form.host || !form.fromEmail}>Salvar e-mail</Button>
+        </Group>
+        {sent && <Alert color="teal" icon={<IconCircleCheck />} title="E-mail de teste enviado">O servidor aceitou a mensagem para <b>{sent}</b>. Confira a caixa de entrada (e o spam).</Alert>}
+        {data.source === 'servidor' && <Text size="xs" c="dimmed">Hoje vale a configuração do servidor (variáveis SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM). Salvar aqui passa a valer a desta tela.</Text>}
+      </Stack>
+    </Section>
   )
 }
 

@@ -67,12 +67,12 @@ export function itemsTable(doc: DocData) {
   const th = 'style="text-align:left;padding:6px 8px;border-bottom:2px solid #d0d7de;font-size:12px;color:#57606a"'
   const thr = th.replace('text-align:left', 'text-align:right')
   const td = 'style="padding:6px 8px;border-bottom:1px solid #eaeef2;font-size:13px"'
-  const tdr = td.replace('padding', 'text-align:right;padding')
+  const tdr = td.replace('padding', 'text-align:right;white-space:nowrap;padding')
   const rows = doc.items.map((i) =>
     `<tr><td ${td}>${escapeHtml(i.sku)}</td><td ${td}>${escapeHtml(i.name)}</td><td ${tdr}>${num.format(i.quantity)} ${escapeHtml(i.unit)}</td>` +
     `<td ${tdr}>${money(i.unitPrice)}</td><td ${tdr}>${i.discountPct ? `${num.format(i.discountPct)}%` : '-'}</td><td ${tdr}>${money(i.total)}</td></tr>`).join('')
   const sum = (label: string, value: string, bold = false) =>
-    `<tr><td colspan="5" style="text-align:right;padding:4px 8px;font-size:13px${bold ? ';font-weight:700' : ''}">${label}</td><td style="text-align:right;padding:4px 8px;font-size:13px${bold ? ';font-weight:700' : ''}">${value}</td></tr>`
+    `<tr><td colspan="5" style="text-align:right;padding:4px 8px;font-size:13px${bold ? ';font-weight:700' : ''}">${label}</td><td style="text-align:right;white-space:nowrap;padding:4px 8px;font-size:13px${bold ? ';font-weight:700' : ''}">${value}</td></tr>`
   const items = doc.items.reduce((s, i) => s + i.total, 0)
   return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:8px 0">` +
     `<thead><tr><th ${th}>Código</th><th ${th}>Produto</th><th ${thr}>Qtd.</th><th ${thr}>Preço unit.</th><th ${thr}>Desc.</th><th ${thr}>Total</th></tr></thead>` +

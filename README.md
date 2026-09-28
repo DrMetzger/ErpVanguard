@@ -97,9 +97,12 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   Ao lançar, o sistema aprende a amarração produto × fornecedor.
 - **IA (Gemini):** crie o secret `GEMINI_API_KEY` no GitHub; o deploy grava no `.env` da VPS.
   Opcional: a variável `GEMINI_MODEL` (padrão `gemini-3.8-flash`).
+- **E-mail (orçamento/pedido ao cliente):** servidor SMTP em Administração › Configurações (senha
+  criptografada) e textos em Administração › Modelos de e-mail. Sem configuração na tela, valem as
+  variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`Nome <email>`).
 
 Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
-`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs`, `node test/email-flow.mjs` (este sobe um SMTP local na porta 2599) (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD`).
 
 ### Desenvolvimento local

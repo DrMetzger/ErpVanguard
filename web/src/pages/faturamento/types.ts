@@ -27,7 +27,9 @@ export interface SalesDoc {
   priceTableId: string | null; priceTable: string | null; items: SalesOrderItem[]; warnings: string[]; taxes: TaxTotals | null; taxRegime: string
   invoice?: { id: string; label: string } | null; quoteId?: string | null; quoteCode?: string | null
   lostReason?: string | null; orderId?: string | null; orderCode?: string | null
+  emails?: DocEmail[]
 }
+export interface DocEmail { id: string; to: string; cc: string | null; status: 'enviado' | 'erro'; error: string | null; sentAt: string; userName: string }
 export interface SalesInvoiceRow {
   id: string; number: number; series: number; issuedAt: string; total: number; status: string; sefazStatus: string
   customerName: string; customerUf: string | null; companyCode: string; orderCode: string | null
