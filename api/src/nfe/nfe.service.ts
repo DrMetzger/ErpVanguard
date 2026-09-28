@@ -150,14 +150,15 @@ export class NfeService {
 
   private async event(tx: Db, e: { invoiceId?: string | null; companyId: string; type: EventType; environment: Environment; transport?: AuditTransport; result?: Partial<AuthResult> & { ok?: boolean }; success: boolean; userId: string; sequence?: number; text?: string; series?: number; from?: number; to?: number; error?: string }) {
     // Uma linha por ida à SEFAZ; o resultado (código, mensagem, protocolo) fica na última.
+    // clock_timestamp: dentro da mesma transação o now() é igual e a ordem do histórico se perderia.
     const calls = e.transport?.calls.length ? e.transport.calls : [null]
     for (const [i, call] of calls.entries()) {
       const last = i === calls.length - 1
       const type = ['nfeConsultaNF', 'nfeRetAutorizacaoLote'].includes(call?.service ?? '') ? 'consulta' : e.type
       const own = summarize(call?.response ?? null)
       await tx.query(
-        `INSERT INTO nfe_events (invoice_id, company_id, type, environment, sequence, series, number_from, number_to, text, request_xml, response_xml, status_code, message, protocol, success, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        `INSERT INTO nfe_events (invoice_id, company_id, type, environment, sequence, series, number_from, number_to, text, request_xml, response_xml, status_code, message, protocol, success, created_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, clock_timestamp())`,
         [e.invoiceId ?? null, e.companyId, type, e.environment, e.sequence ?? null, e.series ?? null, e.from ?? null, e.to ?? null, e.text ?? null,
           call?.request ?? null, call?.response ?? null, last ? e.result?.cStat ?? own.cStat : own.cStat, last ? (e.error ?? e.result?.xMotivo ?? own.xMotivo) : call?.error ?? own.xMotivo,
           last ? e.result?.nProt ?? null : null, last ? e.success : false, e.userId],
