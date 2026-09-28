@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { SMTPServer } from 'smtp-server'
 
 const API = process.env.API ?? 'http://localhost:3000/api'
+const IE = { ES: '082560013', AM: '043413412', MS: '283115947', AC: '0100482300112', AL: '240000048', AP: '030123459', BA: '12345663', CE: '060000015', DF: '0730000100109', GO: '109876547', MA: '120000385', MT: '00130000019', MG: '0623079040081', PA: '159999995', PB: '060000015', PR: '1234567850', PE: '032141840', PI: '012345679', RJ: '99999993', RN: '200400401', RS: '2243658792', RO: '00000000625213', RR: '240066281', SC: '251040852', SP: '110042490114', SE: '271234563', TO: '29010227836' } // exemplos válidos das SEFAZ
 const PORT = Number(process.env.SMTP_TEST_PORT ?? 2599)
 const run = Date.now().toString(36).slice(-5).toUpperCase()
 let passed = 0
@@ -72,7 +73,7 @@ try {
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
   await call(admin, 'PUT', `/companies/${head.id}/logo`, { logo: `data:image/png;base64,${png}` })
   const custName = `Cliente <script>alert(1)</script> & Filhos ${run}`
-  const cust = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: custName, uf: head.uf, taxpayer: '1', email: `compras.${run.toLowerCase()}@cliente.test` })
+  const cust = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: custName, uf: head.uf, taxpayer: '1', ie: IE[head.uf], email: `compras.${run.toLowerCase()}@cliente.test` })
   const prod = await call(admin, 'POST', '/products', { sku: `EM-${run}`, name: 'Serra <circular> 7"', unit: 'UN', costPrice: 100, salePrice: 250, stock: 10 })
   const terms = await call(admin, 'GET', '/catalog/payment-terms')
   const quote = await call(tVend, 'POST', '/sales-quotes', { customerId: cust.id, paymentTermId: terms[0].id, items: [{ productId: prod.id, quantity: 2 }] })

@@ -21,6 +21,7 @@ const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Pa
 const month = today.slice(0, 7)
 const line = (dre, code) => dre.lines.find((l) => l.code === code).amount
 
+const IE = { ES: '082560013', AM: '043413412', MS: '283115947', AC: '0100482300112', AL: '240000048', AP: '030123459', BA: '12345663', CE: '060000015', DF: '0730000100109', GO: '109876547', MA: '120000385', MT: '00130000019', MG: '0623079040081', PA: '159999995', PB: '060000015', PR: '1234567850', PE: '032141840', PI: '012345679', RJ: '99999993', RN: '200400401', RS: '2243658792', RO: '00000000625213', RR: '240066281', SC: '251040852', SP: '110042490114', SE: '271234563', TO: '29010227836' } // exemplos válidos das SEFAZ
 console.log('Centros de custo, relatório por centro e DRE')
 const admin = (await call(null, 'POST', '/auth/login', { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })).token
 const pass = 'Senha-forte-123'
@@ -70,7 +71,7 @@ if (!(await call(admin, 'GET', '/catalog/companies')).some((c) => c.active && c.
   await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
 }
 const head = await call(admin, 'GET', '/companies/branding')
-const customer = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente CC ' + run, uf: head?.uf || 'SP', taxpayer: '1' })
+const customer = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente CC ' + run, uf: head?.uf || 'SP', taxpayer: '1', ie: IE[head?.uf || 'SP'] })
 const product = await call(admin, 'POST', '/products', { sku: `CC-${run}`, name: 'Produto centro de custo', unit: 'UN', costPrice: 40, salePrice: 100, stock: 10 })
 const terms = await call(admin, 'GET', '/catalog/payment-terms')
 const order = await call(tVend, 'POST', '/sales-orders', { customerId: customer.id, paymentTermId: terms.find((t) => t.days === '30/60').id, costCenterId: ccB.id, items: [{ productId: product.id, quantity: 3 }] })
