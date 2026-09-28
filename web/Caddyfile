@@ -9,7 +9,8 @@
 	redir /download /download/
 	handle /download/* {
 		root * /
-		header Cache-Control "no-cache"
+		# Nunca guardar em cache: a página e o APK mudam a cada versão.
+		header Cache-Control "no-store, max-age=0"
 		@apk path *.apk
 		header @apk Content-Type "application/vnd.android.package-archive"
 		file_server

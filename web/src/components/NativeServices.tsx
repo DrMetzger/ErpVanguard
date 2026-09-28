@@ -11,7 +11,7 @@ const POINTS = 'vanguard.pending-locations'
 const SEEN = 'vanguard.seen-notifications'
 const HEARTBEAT_MS = 2 * 60_000
 const NOTIFY_MS = 30_000
-export const APK_URL = 'https://app.erpvanguard.com.br/download/erp-vanguard.apk'
+export const APK_URL = 'https://app.erpvanguard.com.br/download/'
 
 const read = <T,>(k: string, fallback: T): T => { try { return JSON.parse(localStorage.getItem(k) ?? '') as T } catch { return fallback } }
 const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* cheio */ } }

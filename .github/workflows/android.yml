@@ -77,14 +77,15 @@ jobs:
           cp mobile/android/app/build/outputs/apk/debug/app-debug.apk out/erp-vanguard.apk
           cp web/public/version.json out/version.json
           size=$(du -h out/erp-vanguard.apk | cut -f1)
+          when=$(TZ=America/Sao_Paulo date '+%d/%m/%Y às %H:%M')
           cat > out/index.html <<HTML
           <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
           <title>ERP Vanguard · App Android</title>
           <style>body{font-family:system-ui,sans-serif;background:#0b1120;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px}
           .c{max-width:460px;text-align:center}a.b{display:inline-block;background:#f59e0b;color:#111;font-weight:700;padding:14px 22px;border-radius:10px;text-decoration:none;margin:18px 0}
           small{color:#94a3b8;line-height:1.6}</style></head><body><div class="c">
-          <h1>ERP Vanguard</h1><p>App Android · versão $VERSION_NAME ($size)</p>
-          <a class="b" href="erp-vanguard.apk">Baixar o app (APK)</a>
+          <h1>ERP Vanguard</h1><p>App Android · <b>versão $VERSION_NAME</b> ($size)<br><small>publicada em $when (horário de Brasília)</small></p>
+          <a class="b" href="erp-vanguard.apk?v=$VERSION_NAME">Baixar o app (APK) · $VERSION_NAME</a>
           <p><small>No Android, permita "instalar apps desconhecidos" para o navegador quando pedir.<br>
           Para atualizar, baixe de novo e instale por cima: os dados continuam.</small></p></div></body></html>
           HTML

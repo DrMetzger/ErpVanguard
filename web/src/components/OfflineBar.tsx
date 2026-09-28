@@ -12,7 +12,7 @@ export function OfflineBar() {
   const [cacheAt, setCacheAt] = useState(cacheShownAt())
   const [pending, setPending] = useState<QueuedWrite[]>([])
   const [open, setOpen] = useState(false)
-  const [update, setUpdate] = useState<{ version: string } | null>(null)
+  const [update, setUpdate] = useState<{ version: string; name?: string } | null>(null)
 
   useEffect(() => {
     const sync = () => { setOffline(isOffline()); setCacheAt(cacheShownAt()); void queued().then(setPending) }
@@ -27,7 +27,7 @@ export function OfflineBar() {
   return (
     <>
       {update && (
-        <Alert color="blue" variant="light" mb="sm" icon={<IconDownload size={18} />} title="Versão nova do app">
+        <Alert color="blue" variant="light" mb="sm" icon={<IconDownload size={18} />} title={`Versão nova do app${update.name ? ` (${update.name})` : ''}`}>
           <Group justify="space-between">
             <Text size="sm">Baixe e instale por cima (os dados continuam).</Text>
             <Button size="xs" component="a" href={APK_URL}>Baixar atualização</Button>
