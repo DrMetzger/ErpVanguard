@@ -54,6 +54,7 @@ services:
     volumes:
       - caddy-data:/data
       - caddy-config:/config
+      - ${APP_DIR:-/opt/vanguard}/downloads:/download:ro
     depends_on:
       - api
 

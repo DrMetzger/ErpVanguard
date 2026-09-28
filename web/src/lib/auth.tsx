@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api, getToken, setToken } from './api'
+import { api, ApiError, getToken, setToken } from './api'
+import { clearOfflineData } from './offline'
 import type { User } from './types'
 
 interface AuthState {
@@ -20,7 +21,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!getToken()) return
     api<User>('/auth/me')
       .then(setUser)
-      .catch(() => setToken(null))
+      // Só sai se o servidor recusar o acesso; sem internet continua com o usuário guardado.
+      .catch((e) => { if (e instanceof ApiError && e.status === 401) setToken(null) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -42,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setToken(null)
+    void clearOfflineData()
     setUser(null)
   }, [])
 

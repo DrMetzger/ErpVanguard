@@ -20,6 +20,7 @@ const Faturamento = lazy(() => import('./pages/faturamento'))
 const Financeiro = lazy(() => import('./pages/financeiro'))
 const Bi = lazy(() => import('./pages/bi'))
 const Users = lazy(() => import('./pages/Users'))
+const Devices = lazy(() => import('./pages/Devices'))
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -45,6 +46,7 @@ export default function App() {
         {user.role === 'admin' && <Route path="parametros" element={<Parameters />} />}
         {user.role === 'admin' && <Route path="modelos-email" element={<EmailTemplates />} />}
         {user.role === 'admin' && <Route path="empresas/*" element={<Empresas />} />}
+        {user.role === 'admin' && <Route path="dispositivos" element={<Devices />} />}
         {modules.filter((m) => m.soon).map((m) => <Route key={m.path} path={m.path.slice(1)} element={<ModuleSoon module={m} />} />)}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

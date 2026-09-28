@@ -1,18 +1,29 @@
 name: Android
 
-# Gera o app Android. Sempre produz um APK de teste; com os secrets da chave de
-# upload configurados, gera também o AAB assinado para a Play Store.
-# Pausado até o ERP ser validado: só roda manualmente (aba Actions > Android > Run workflow).
+# Gera o app Android (espelho do ERP web, ligado ao servidor app.erpvanguard.com.br).
+# A cada mudança em web/ ou mobile/: compila o APK de teste, publica em
+# https://app.erpvanguard.com.br/download/ e guarda como artifact. Com os secrets da
+# chave de upload, gera também o AAB assinado para a Play Store.
 on:
+  push:
+    branches: [main, claude/keen-dirac-i5mx15]
+    paths:
+      - 'web/**'
+      - 'mobile/**'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
+
+concurrency:
+  group: android
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       VERSION_CODE: ${{ github.run_number }}
-      VERSION_NAME: 0.1.${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,11 +44,13 @@ jobs:
 
       - name: Build web and sync Capacitor
         run: |
+          # Versão embutida no app (o app compara com a publicada para avisar de atualização).
+          printf '{"version":"%s","name":"%s","builtAt":"%s"}\n' "${GITHUB_SHA::12}" "$VERSION_NAME" "$(date -u +%FT%TZ)" > web/public/version.json
           npm ci --prefix web
           npm ci --prefix mobile
           cd mobile && npm run sync
 
-      - name: Debug APK
+      - name: Debug APK (teste)
         working-directory: mobile/android
         run: ./gradlew --no-daemon assembleDebug
 
@@ -58,10 +71,46 @@ jobs:
           ./gradlew --no-daemon bundleRelease
           rm -f "$ANDROID_KEYSTORE_PATH"
 
+      - name: Prepare download page
+        run: |
+          mkdir -p out
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk out/erp-vanguard.apk
+          cp web/public/version.json out/version.json
+          size=$(du -h out/erp-vanguard.apk | cut -f1)
+          cat > out/index.html <<HTML
+          <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>ERP Vanguard · App Android</title>
+          <style>body{font-family:system-ui,sans-serif;background:#0b1120;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px}
+          .c{max-width:460px;text-align:center}a.b{display:inline-block;background:#f59e0b;color:#111;font-weight:700;padding:14px 22px;border-radius:10px;text-decoration:none;margin:18px 0}
+          small{color:#94a3b8;line-height:1.6}</style></head><body><div class="c">
+          <h1>ERP Vanguard</h1><p>App Android · versão $VERSION_NAME ($size)</p>
+          <a class="b" href="erp-vanguard.apk">Baixar o app (APK)</a>
+          <p><small>No Android, permita "instalar apps desconhecidos" para o navegador quando pedir.<br>
+          Para atualizar, baixe de novo e instale por cima: os dados continuam.</small></p></div></body></html>
+          HTML
+
+      - name: Configure SSH
+        id: ssh
+        continue-on-error: true
+        uses: ./.github/actions/vps-ssh
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Publish on app.erpvanguard.com.br/download
+        if: steps.ssh.outcome == 'success'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" "sudo install -d /opt/vanguard/downloads"
+          rsync -az --rsync-path="sudo rsync" out/ "$VPS_USER@$VPS_HOST:/opt/vanguard/downloads/"
+          echo "APK publicado: https://app.erpvanguard.com.br/download/"
+
       - uses: actions/upload-artifact@v4
         with:
           name: erp-vanguard-${{ env.VERSION_NAME }}-teste-apk
-          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          path: out/erp-vanguard.apk
           retention-days: 30
 
       - uses: actions/upload-artifact@v4

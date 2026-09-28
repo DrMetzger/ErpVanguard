@@ -80,6 +80,8 @@ jobs:
           fi
           grep -q '^APP_DOMAIN=' "$env_file" || echo "APP_DOMAIN=$APP_DOMAIN" >> "$env_file"
 
+          # Pasta do APK (workflow Android) servida em /download
+          install -d "$APP_DIR/downloads"
           cd "$APP_DIR/app/infra"
           docker compose --env-file "$env_file" up -d --build --remove-orphans
           docker image prune -f > /dev/null

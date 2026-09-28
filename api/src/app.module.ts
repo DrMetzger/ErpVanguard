@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common'
-import { APP_GUARD } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { AuthGuard } from './auth/auth.guard'
 import { AuthModule } from './auth/auth.module'
 import { CatalogModule } from './catalog/catalog.module'
 import { BiModule } from './bi/bi.module'
+import { DevicesModule } from './devices/devices.module'
+import { IdempotencyInterceptor } from './devices/idempotency.interceptor'
 import { CompaniesModule } from './companies/companies.module'
 import { CreditModule } from './credit/credit.module'
 import { CustomFieldsModule } from './custom/custom-fields.module'
@@ -44,8 +46,9 @@ import { UsersModule } from './users/users.module'
     FinanceModule,
     SalesModule,
     BiModule,
+    DevicesModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
+  providers: [{ provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor }],
 })
 export class AppModule {}

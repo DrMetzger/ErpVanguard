@@ -20,6 +20,14 @@ android {
     // Chave de upload da Play Store, vinda dos secrets do GitHub (nunca do repositório).
     def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
     signingConfigs {
+        // Chave fixa só para o APK de teste (baixado do nosso servidor): assim a versão nova instala por cima.
+        // Não serve para a Play Store, que usa a chave de upload dos secrets.
+        teste {
+            storeFile file('vanguard-teste.keystore')
+            storePassword 'vanguard-teste'
+            keyAlias 'vanguard-teste'
+            keyPassword 'vanguard-teste'
+        }
         if (keystorePath) {
             release {
                 storeFile file(keystorePath)
@@ -30,6 +38,9 @@ android {
         }
     }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.teste
+        }
         release {
             if (keystorePath) signingConfig signingConfigs.release
             minifyEnabled false

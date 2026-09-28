@@ -1,6 +1,7 @@
 import { notifications } from '@mantine/notifications'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
+import { QueuedOffline } from './offline'
 
 // Carrega dados da API e permite recarregar.
 export function useApi<T>(path: string | null) {
@@ -35,7 +36,8 @@ export function useAction() {
       if (success) notifications.show({ color: 'teal', message: success })
       return result
     } catch (err) {
-      notifications.show({ color: 'red', title: 'Não deu certo', message: (err as Error).message })
+      if (err instanceof QueuedOffline) notifications.show({ color: 'yellow', title: 'Guardado no aparelho', message: err.message, autoClose: 6000 })
+      else notifications.show({ color: 'red', title: 'Não deu certo', message: (err as Error).message })
       return undefined
     } finally {
       setBusy(false)
