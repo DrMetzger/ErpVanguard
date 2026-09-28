@@ -7,6 +7,7 @@ import { numbers, one, type Db } from '../common/db'
 import { addDays, categoryByCode, createTitles, round2, splitAmount, termDays, today } from '../finance/finance.logic'
 import { code, found } from '../purchasing/purchasing.helpers'
 import { ParametersService } from '../params/parameters.service'
+import { reverseInvoice, checkReversible } from './invoice-reversal'
 import { takeInvoiceNumber } from './numbering'
 import { SalesDocDto, SalesDocsService } from './sales-docs.service'
 import { SalesEmailService, SendEmailDto } from './sales-email.service'
@@ -238,20 +239,11 @@ export class SalesController {
     return this.db.transaction(async (tx) => {
       const invoice = found(await one(tx, `SELECT * FROM sales_invoices WHERE id = $1 FOR UPDATE`, [id]), 'Nota não encontrada')
       if (invoice.status === 'cancelada') throw new BadRequestException('Nota já cancelada')
-      const [{ paid }] = await tx.query(`SELECT coalesce(sum(paid_amount), 0) AS paid FROM financial_titles WHERE sales_invoice_id = $1`, [id])
-      if (Number(paid) > 0) throw new BadRequestException('A nota tem recebimentos baixados; estorne as baixas no Financeiro antes')
-      const reference = `Cancelamento NF ${invoice.number}/${invoice.series}`
-      const items = await tx.query(`SELECT product_id, quantity, unit_cost FROM sales_invoice_items WHERE invoice_id = $1 AND updates_stock`, [id])
-      for (const item of items) {
-        await tx.query(`UPDATE products SET stock = stock + $2, updated_at = now() WHERE id = $1`, [item.product_id, item.quantity])
-        await tx.query(
-          `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'cancelamento_nf', $4, $5)`,
-          [item.product_id, item.quantity, item.unit_cost, reference, me.id],
-        )
-      }
-      await tx.query(`UPDATE financial_titles SET status = 'cancelado' WHERE sales_invoice_id = $1`, [id])
-      await tx.query(`UPDATE sales_invoices SET status = 'cancelada', cancel_reason = $2 WHERE id = $1`, [id, dto.reason.trim()])
-      if (invoice.order_id) await tx.query(`UPDATE sales_orders SET status = 'aberto', updated_at = now() WHERE id = $1`, [invoice.order_id])
+      // NF-e autorizada só sai pelo cancelamento na SEFAZ; com erro de transmissão, pode ter sido autorizada.
+      if (invoice.sefaz_status === 'autorizada') throw new BadRequestException('NF-e autorizada: use "Cancelar na SEFAZ"')
+      if (invoice.sefaz_status === 'erro') throw new BadRequestException('A última transmissão falhou e a NF-e pode ter sido autorizada: use "Transmitir à SEFAZ" para consultar antes de cancelar')
+      await checkReversible(tx, id)
+      await reverseInvoice(tx, invoice, dto.reason, me.id)
       return this.loadInvoice(tx, id)
     })
   }
@@ -281,7 +273,8 @@ export class SalesController {
     const inv = found(await one(
       db,
       `SELECT i.id, i.number, i.series, i.issued_at AS "issuedAt", i.products_total AS "productsTotal", i.freight, i.discount, i.total, i.status,
-              i.sefaz_status AS "sefazStatus", i.cancel_reason AS "cancelReason", i.order_id AS "orderId", o.number AS "orderNumber", i.taxes,
+              i.sefaz_status AS "sefazStatus", i.cancel_reason AS "cancelReason", i.access_key AS "accessKey", i.environment, i.sefaz_code AS "sefazCode",
+              i.sefaz_message AS "sefazMessage", i.protocol, i.authorized_at AS "authorizedAt", i.xml IS NOT NULL AS "hasXml", i.xml_proc IS NOT NULL AS "hasProc", i.order_id AS "orderId", o.number AS "orderNumber", i.taxes,
               ot.code || ' · ' || ot.name AS "operationLabel", i.company_id AS "companyId", i.model,
               co.tax_regime AS "taxRegime", co.code || ' · ' || coalesce(co.trade_name, co.name) AS "companyLabel",
               i.cost_center_id AS "costCenterId", (SELECT code || ' · ' || name FROM cost_centers WHERE id = i.cost_center_id) AS "costCenter",
@@ -301,8 +294,14 @@ export class SalesController {
       `SELECT id, kind, doc_type AS "docType", installment, installments, due_date::text AS "dueDate", amount, paid_amount AS "paidAmount", status FROM financial_titles WHERE sales_invoice_id = $1 ORDER BY installment`,
       [id],
     )
+    // Histórico do que foi à SEFAZ (sem os XMLs; baixam à parte)
+    const events = await db.query(
+      `SELECT e.id, e.type, e.sequence, e.environment, e.text, e.status_code AS "statusCode", e.message, e.protocol, e.success, e.created_at AS "createdAt", u.name AS "userName"
+       FROM nfe_events e LEFT JOIN users u ON u.id = e.created_by WHERE e.invoice_id = $1 ORDER BY e.created_at DESC, e.id LIMIT 100`,
+      [id],
+    )
     return {
-      ...numbers(inv, 'productsTotal', 'freight', 'discount', 'total'),
+      ...numbers(inv, 'productsTotal', 'freight', 'discount', 'total'), nfeEvents: events,
       orderCode: inv.orderNumber ? code('PV', inv.orderNumber) : null,
       items: items.map((i: any) => numbers(i, 'quantity', 'unitPrice', 'total')),
       titles: titles.map((t: any) => numbers(t, 'amount', 'paidAmount')),

@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import type { Db } from '../common/db'
 
-export interface ParamDef { key: string; group: string; label: string; type: 'bool' | 'int' | 'decimal' | 'text'; default: boolean | number | string; help: string; min?: number; max?: number; pattern?: RegExp; patternMessage?: string }
+export interface ParamDef { key: string; group: string; label: string; type: 'bool' | 'int' | 'decimal' | 'text'; default: boolean | number | string; help: string; min?: number; max?: number; pattern?: RegExp; patternMessage?: string; keepSpaces?: boolean }
 export type ParamValue = boolean | number | string
 
 // Parâmetros do sistema (como os MV_ do Protheus). O valor padrão vale até alguém mudar na tela.
@@ -20,6 +20,14 @@ export const PARAMS: ParamDef[] = [
   { key: 'MV_COFPRE', group: 'Impostos', label: 'COFINS no Lucro Presumido (%)', type: 'decimal', default: 3, help: 'Regime cumulativo.', min: 0, max: 100 },
   { key: 'MV_PISREAL', group: 'Impostos', label: 'PIS no Lucro Real (%)', type: 'decimal', default: 1.65, help: 'Regime não cumulativo.', min: 0, max: 100 },
   { key: 'MV_COFREAL', group: 'Impostos', label: 'COFINS no Lucro Real (%)', type: 'decimal', default: 7.6, help: 'Regime não cumulativo.', min: 0, max: 100 },
+  // NF-e
+  { key: 'MV_INDPRES', group: 'NF-e', label: 'Presença do comprador (indPres)', type: 'int', default: 1, help: '0 = não se aplica, 1 = presencial, 2 = internet, 3 = teleatendimento, 4 = entrega em domicílio, 5 = presencial fora do estabelecimento, 9 = outros.', min: 0, max: 9 },
+  { key: 'MV_TPAGVIS', group: 'NF-e', label: 'Forma de pagamento à vista (tPag)', type: 'text', default: '01', help: 'Código da SEFAZ: 01 dinheiro, 03 cartão de crédito, 04 cartão de débito, 15 boleto, 17 PIX, 99 outros.', pattern: /^\d{2}$/, patternMessage: 'use o código de 2 dígitos (ex.: 01, 17)' },
+  { key: 'MV_TPAGPRZ', group: 'NF-e', label: 'Forma de pagamento a prazo (tPag)', type: 'text', default: '15', help: 'Código da SEFAZ para vendas com duplicatas: 15 boleto, 05 crédito loja, 99 outros.', pattern: /^\d{2}$/, patternMessage: 'use o código de 2 dígitos (ex.: 15)' },
+  { key: 'MV_RTCNPJ', group: 'NF-e', label: 'Responsável técnico: CNPJ', type: 'text', default: '', help: 'Grupo infRespTec (software house). Vazio = não informa o grupo.', pattern: /^(\d{14})?$/, patternMessage: 'CNPJ com 14 dígitos, sem pontos' },
+  { key: 'MV_RTCONT', group: 'NF-e', label: 'Responsável técnico: contato', type: 'text', default: '', help: 'Nome da pessoa de contato.', keepSpaces: true, pattern: /^.{0,60}$/, patternMessage: 'até 60 caracteres' },
+  { key: 'MV_RTMAIL', group: 'NF-e', label: 'Responsável técnico: e-mail', type: 'text', default: '', help: 'E-mail do responsável técnico.', pattern: /^([^@\s]+@[^@\s]+\.[^@\s]+)?$/, patternMessage: 'e-mail inválido' },
+  { key: 'MV_RTFONE', group: 'NF-e', label: 'Responsável técnico: telefone', type: 'text', default: '', help: 'Só números, com DDD.', pattern: /^(\d{6,14})?$/, patternMessage: 'de 6 a 14 dígitos' },
 ]
 
 @Injectable()
@@ -42,7 +50,7 @@ export class ParametersService {
       if (!def) throw new BadRequestException(`Parâmetro desconhecido: ${key}`)
       let value: ParamValue
       if (def.type === 'text') {
-        const text = String(raw ?? '').replace(/\s+/g, '').trim()
+        const text = def.keepSpaces ? String(raw ?? '').replace(/\s+/g, ' ').trim() : String(raw ?? '').replace(/\s+/g, '').trim()
         if (def.pattern && !def.pattern.test(text)) throw new BadRequestException(`${def.label}: ${def.patternMessage ?? 'formato inválido'}`)
         value = def.key === 'MV_ESPECIE' ? text.toUpperCase() : text
       } else if (def.type === 'bool') {
