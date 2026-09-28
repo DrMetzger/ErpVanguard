@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import type { Db } from '../common/db'
+import { checkMask } from './masks'
 
 // Cadastros que aceitam campos personalizados: nome do cadastro -> tabela.
 export const CUSTOMIZABLE: Record<string, { table: string; title: string }> = {
@@ -17,9 +18,64 @@ export const CUSTOMIZABLE: Record<string, { table: string; title: string }> = {
   'payment-terms': { table: 'payment_terms', title: 'Condições de pagamento' },
 }
 
+export const FIELD_TYPES = ['text', 'memo', 'number', 'integer', 'currency', 'date', 'bool', 'select', 'radio', 'multiselect'] as const
+export type FieldType = (typeof FIELD_TYPES)[number]
+
 export interface CustomFieldDef {
-  id: string; key: string; label: string; type: 'text' | 'number' | 'date' | 'bool' | 'select'
+  id: string; key: string; label: string; type: FieldType; mask: string | null
   options: string[]; required: boolean; showInList: boolean; help: string | null; position: number; active: boolean
+}
+
+// Confere e normaliza um valor para o tipo do campo. Lança Error com a mensagem.
+export function normalizeValue(d: Pick<CustomFieldDef, 'type' | 'options' | 'mask'>, v: unknown): unknown {
+  switch (d.type) {
+    case 'text': {
+      if (typeof v !== 'string' || v.length > 500) throw new Error('texto inválido (até 500 caracteres)')
+      const t = v.trim()
+      if (d.mask) { const m = checkMask(d.mask, d.mask === 'placa' ? t.toUpperCase() : t); if (m) throw new Error(m) }
+      return d.mask === 'placa' ? t.toUpperCase() : t
+    }
+    case 'memo':
+      if (typeof v !== 'string' || v.length > 5000) throw new Error('texto inválido (até 5.000 caracteres)')
+      return v.trim()
+    case 'number':
+    case 'integer':
+    case 'currency': {
+      // "2.500,50" (formato brasileiro) ou "2500.5"/2500.5
+      const n = typeof v === 'string' ? Number(v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v.trim()) : Number(v)
+      if (typeof v === 'boolean' || !Number.isFinite(n)) throw new Error('número inválido')
+      if (d.type === 'integer' && !Number.isInteger(n)) throw new Error('use um número inteiro')
+      return d.type === 'currency' ? Math.round(n * 100) / 100 : n
+    }
+    case 'date':
+      if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('data inválida')
+      return v
+    case 'bool':
+      if (typeof v !== 'boolean') throw new Error('use sim ou não')
+      return v
+    case 'select':
+    case 'radio':
+      if (typeof v !== 'string' || !d.options.includes(v)) throw new Error('opção inválida')
+      return v
+    case 'multiselect': {
+      const list = Array.isArray(v) ? v : [v]
+      if (!list.every((x) => typeof x === 'string' && d.options.includes(x))) throw new Error('opção inválida')
+      return [...new Set(list as string[])]
+    }
+  }
+}
+
+// Converte um valor já gravado quando o tipo do campo muda (ex.: lista → várias opções).
+export function convertValue(from: FieldType, to: Pick<CustomFieldDef, 'type' | 'options' | 'mask'>, v: unknown): unknown {
+  let x = v
+  if (from === 'multiselect' && to.type !== 'multiselect') {
+    const list = Array.isArray(v) ? v : [v]
+    if (list.length > 1) throw new Error('tem mais de uma opção marcada')
+    x = list[0]
+  }
+  if (to.type === 'multiselect' && !Array.isArray(x)) x = [x]
+  if (['text', 'memo'].includes(to.type) && typeof x !== 'string') x = typeof x === 'boolean' ? (x ? 'Sim' : 'Não') : String(x)
+  return normalizeValue(to, x)
 }
 
 @Injectable()
@@ -28,7 +84,7 @@ export class CustomFieldsService {
 
   definitions(resource: string, db: Db = this.db, onlyActive = true): Promise<CustomFieldDef[]> {
     return db.query(
-      `SELECT id, key, label, type, options, required, show_in_list AS "showInList", help, position, active
+      `SELECT id, key, label, type, mask, options, required, show_in_list AS "showInList", help, position, active
        FROM custom_fields WHERE resource = $1 AND ($2 = false OR active) ORDER BY position, label`,
       [resource, onlyActive],
     )
@@ -60,29 +116,14 @@ export class CustomFieldsService {
         delete out[d.key]
         continue
       }
-      switch (d.type) {
-        case 'text':
-          if (typeof v !== 'string' || v.length > 500) fail('texto inválido (até 500 caracteres)')
-          out[d.key] = (v as string).trim()
-          break
-        case 'number': {
-          const n = Number(v)
-          if (!Number.isFinite(n)) fail('número inválido')
-          out[d.key] = n
-          break
-        }
-        case 'date':
-          if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) fail('data inválida')
-          out[d.key] = v
-          break
-        case 'bool':
-          if (typeof v !== 'boolean') fail('use sim ou não')
-          out[d.key] = v
-          break
-        case 'select':
-          if (typeof v !== 'string' || !d.options.includes(v)) fail('opção inválida')
-          out[d.key] = v
-          break
+      try {
+        out[d.key] = normalizeValue(d, v)
+      } catch (error: any) {
+        fail(error.message)
+      }
+      if (Array.isArray(out[d.key]) && !(out[d.key] as unknown[]).length) {
+        if (d.required) fail('marque ao menos uma opção')
+        delete out[d.key]
       }
     }
     return out

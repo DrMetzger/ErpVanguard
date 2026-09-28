@@ -87,7 +87,7 @@ export class NotificationsController {
         notices.push({
           id: `certificado-${c.id}`, kind: 'certificado',
           title: c.days < 0 ? 'Certificado A1 vencido' : c.days === 0 ? 'Certificado A1 vence hoje' : `Certificado A1 vence em ${c.days} dia(s)`,
-          description: `${c.company} · renove para continuar emitindo notas`, link: '/cadastros/empresas/certificados', createdAt: new Date().toISOString(),
+          description: `${c.company} · renove para continuar emitindo notas`, link: '/empresas/certificados', createdAt: new Date().toISOString(),
         })
       }
     }

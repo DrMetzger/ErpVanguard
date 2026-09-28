@@ -48,8 +48,8 @@ export default function Settings() {
       <Title order={2} mb={4}>Configurações</Title>
       <Text c="dimmed" mb="lg">Só administradores veem esta tela.</Text>
       <Stack gap="lg" maw={900}>
-        <Section icon={IconBuilding} title="Empresas, filiais, logo e certificado A1" description="Agora ficam em Cadastros › Empresas: dados de cada filial (a UF define CFOP 5xxx ou 6xxx), logo do DANFE e dos relatórios e o certificado digital.">
-          <Group justify="flex-end"><Button component={Link} to="/cadastros/empresas" variant="light">Abrir Cadastros › Empresas</Button></Group>
+        <Section icon={IconBuilding} title="Empresas, filiais, logo e certificado A1" description="Ficam em Administração › Empresas: dados de cada filial (a UF define CFOP 5xxx ou 6xxx), logo do DANFE e dos relatórios e o certificado digital.">
+          <Group justify="flex-end"><Button component={Link} to="/empresas" variant="light">Abrir Administração › Empresas</Button></Group>
         </Section>
 
         <SerasaSection data={data.serasa} onSaved={setData} />

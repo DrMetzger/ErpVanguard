@@ -24,8 +24,8 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
 
 ### Menu
 
-Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empresas) · **Compras** · **Estoque** ·
-**Faturamento** · **Financeiro** · **BI Avançado** — e, para administradores, **Usuários** e **Configurações**.
+Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal) · **Compras** · **Estoque** ·
+**Faturamento** · **Financeiro** · **BI Avançado** — e, para administradores, **Empresas**, **Usuários**, **Personalizar cadastros**, **Parâmetros** e **Configurações**.
 
 - **Cadastros › Produtos:** produtos (tipo SPED, grupo, unidade, NCM, origem), grupos, tipos, unidades, NCM
   e tabelas de preço.
@@ -33,7 +33,7 @@ Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empre
 - **Cadastros › Fiscal:** CFOP, tipos de operação, TES (tipos de entrada e saída: CFOP, estoque, financeiro,
   CSTs e impostos) e matriz fiscal (qual TES usar por operação, UF, contribuinte, tipo/grupo e NCM;
   vence a regra mais específica), com simulador por empresa/filial.
-- **Cadastros › Empresas:** matriz e filiais (a UF de cada uma decide CFOP 5xxx × 6xxx), logo para DANFE e
+- **Administração › Empresas:** matriz e filiais (a UF de cada uma decide CFOP 5xxx × 6xxx), logo para DANFE e
   relatórios (PNG/JPG, sai no cabeçalho dos impressos) e **certificado digital A1** (.pfx): a API confere
   senha, CNPJ (a raiz da matriz vale para as filiais) e validade; arquivo e senha ficam criptografados
   (AES-256-GCM) e nunca voltam para a tela; o sino avisa 30 dias antes de vencer. Só administradores.
@@ -57,8 +57,11 @@ Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal · Empre
   da empresa e define o CRT.
 - **Parâmetros** (Administração): comportamento do sistema no estilo MV_ (estoque negativo, validade do orçamento, frete e IPI
   na base do ICMS, DIFAL, ICMS fora da base do PIS/COFINS, alíquotas de PIS/COFINS).
-- **Personalizar cadastros** (Administração): campos novos (texto, número, data, sim/não, lista) em produtos, clientes,
-  fornecedores, empresas e demais cadastros, com opção de coluna na lista; e ajuste do formulário (esconder, renomear, reordenar).
+- **Personalizar cadastros** (Administração): campos novos em produtos, clientes, fornecedores, empresas e demais cadastros —
+  texto (com máscara pronta: CPF, CNPJ, CPF/CNPJ, CEP, telefone, placa, ou personalizada com 9/A/*), texto longo (memo), número,
+  inteiro, moeda, data, sim/não, lista suspensa, opções na tela e caixas de marcar —, com opção de coluna na lista. O campo pode
+  ser editado depois (inclusive nome interno e tipo: os valores gravados são convertidos ou o sistema avisa quais não servem).
+  Ajuste do formulário: esconder, renomear, reordenar.
 - **Receita e Serasa:** botão "Receita" no CNPJ de clientes, fornecedores e empresas preenche os dados pela BrasilAPI (gratuita).
   A consulta de crédito da Serasa Experian (API paga) fica pronta em Configurações, esperando as chaves do contrato.
 - **Financeiro:** contas a receber e a pagar (manuais, parceladas ou repetidas; das notas de venda; das NF-e de compra

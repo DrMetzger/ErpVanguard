@@ -83,7 +83,7 @@ export function ProductSelect({ value, onChange, ...props }: { value: { id: stri
 
 interface Branding { name: string; tradeName: string | null; document: string; ie: string | null; phone: string | null; email: string | null; street: string | null; number: string | null; district: string | null; city: string | null; uf: string; logo: string | null }
 
-// Cabeçalho dos documentos impressos: logo e dados da matriz (Cadastros › Empresas).
+// Cabeçalho dos documentos impressos: logo e dados da matriz (Administração › Empresas).
 export function ReportHeader({ title }: { title: string }) {
   const { data: b } = useApi<Branding | null>('/companies/branding')
   if (!b) return null

@@ -64,7 +64,7 @@ export class SalesDocsService {
     const company = dto.companyId
       ? found(await one(tx, `SELECT id FROM companies WHERE id = $1 AND active`, [dto.companyId]), 'Empresa/filial não encontrada')
       : await one(tx, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`)
-    if (!company) throw new BadRequestException('Cadastre a empresa em Cadastros › Empresas antes de vender')
+    if (!company) throw new BadRequestException('Cadastre a empresa em Administração › Empresas antes de vender')
     const customer = found(await one(tx, `SELECT id, name, uf, taxpayer, active FROM customers WHERE id = $1`, [dto.customerId]), 'Cliente não encontrado')
     if (!customer.active) throw new BadRequestException('Cliente inativo')
     const operation = dto.operationTypeId

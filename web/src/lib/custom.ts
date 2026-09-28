@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
+export type FieldType = 'text' | 'memo' | 'number' | 'integer' | 'currency' | 'date' | 'bool' | 'select' | 'radio' | 'multiselect'
+
+export { applyMask, MASKS } from './mask'
+
 export interface CustomField {
-  id: string; key: string; label: string; type: 'text' | 'number' | 'date' | 'bool' | 'select'
+  id: string; key: string; label: string; type: FieldType; mask: string | null
   options: string[]; required: boolean; showInList: boolean; help: string | null; position: number; active: boolean
 }
 export interface FormLayout { hidden: string[]; order: string[]; labels: Record<string, string> }

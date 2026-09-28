@@ -4,10 +4,17 @@ import { useEffect, useState } from 'react'
 import { Loading } from '../components/ui'
 import { api } from '../lib/api'
 import { loadMeta } from '../lib/catalog'
-import { clearCustomization, type CustomField, type Customization } from '../lib/custom'
+import { clearCustomization, MASKS, type CustomField, type Customization } from '../lib/custom'
 import { useAction, useApi } from '../lib/hooks'
 
-const TYPES = [{ value: 'text', label: 'Texto' }, { value: 'number', label: 'Número' }, { value: 'date', label: 'Data' }, { value: 'bool', label: 'Sim/Não' }, { value: 'select', label: 'Lista de opções' }]
+const TYPES = [
+  { value: 'text', label: 'Texto curto (uma linha, com máscara opcional)' }, { value: 'memo', label: 'Texto longo (memo, várias linhas)' },
+  { value: 'number', label: 'Número com decimais' }, { value: 'integer', label: 'Número inteiro' }, { value: 'currency', label: 'Moeda (R$)' },
+  { value: 'date', label: 'Data' }, { value: 'bool', label: 'Sim/Não' }, { value: 'select', label: 'Lista suspensa (uma opção)' },
+  { value: 'radio', label: 'Opções na tela (uma opção)' }, { value: 'multiselect', label: 'Caixas de marcar (várias opções)' },
+]
+const SHORT: Record<string, string> = { text: 'Texto', memo: 'Texto longo', number: 'Número', integer: 'Inteiro', currency: 'Moeda', date: 'Data', bool: 'Sim/Não', select: 'Lista', radio: 'Opções', multiselect: 'Várias opções' }
+const WITH_OPTIONS = ['select', 'radio', 'multiselect']
 const slug = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^(\d)/, 'c$1').slice(0, 40)
 
 // Administração: campos novos nos cadastros e ajuste dos formulários (esconder, renomear, reordenar).
@@ -47,7 +54,7 @@ export default function Customize() {
                     <Table.Tr key={f.id} opacity={f.active ? 1 : 0.5}>
                       <Table.Td fw={600}>{f.label}{!f.active && <Text span size="xs" c="dimmed"> (inativo)</Text>}</Table.Td>
                       <Table.Td ff="monospace" fz="sm">{f.key}</Table.Td>
-                      <Table.Td>{TYPES.find((t) => t.value === f.type)?.label}{f.type === 'select' && <Text size="xs" c="dimmed">{f.options.join(', ')}</Text>}</Table.Td>
+                      <Table.Td>{SHORT[f.type]}{WITH_OPTIONS.includes(f.type) && <Text size="xs" c="dimmed">{f.options.join(', ')}</Text>}{f.mask && <Text size="xs" c="dimmed">máscara {MASKS.find((m) => m.value === f.mask)?.label.split(' · ')[0] ?? f.mask}</Text>}</Table.Td>
                       <Table.Td>{f.required ? 'Sim' : 'Não'}</Table.Td>
                       <Table.Td>{f.showInList ? 'Sim' : 'Não'}</Table.Td>
                       <Table.Td>
@@ -72,32 +79,47 @@ export default function Customize() {
 
 function FieldModal({ resource, field, onClose, onSaved }: { resource: string; field: Partial<CustomField>; onClose: () => void; onSaved: () => void }) {
   const isNew = !field.id
-  const [form, setForm] = useState({ label: field.label ?? '', key: field.key ?? '', type: field.type ?? 'text', options: field.options ?? [], required: field.required ?? false, showInList: field.showInList ?? false, help: field.help ?? '', active: field.active ?? true })
-  const [touchedKey, setTouchedKey] = useState(false)
+  const preset = field.mask && MASKS.some((m) => m.value === field.mask) ? field.mask : field.mask ? 'custom' : ''
+  const [form, setForm] = useState({
+    label: field.label ?? '', key: field.key ?? '', type: field.type ?? 'text', options: field.options ?? [], required: field.required ?? false,
+    showInList: field.showInList ?? false, help: field.help ?? '', active: field.active ?? true, maskKind: preset, customMask: preset === 'custom' ? field.mask ?? '' : '',
+  })
+  const [touchedKey, setTouchedKey] = useState(!isNew)
   const { busy, run } = useAction()
+  const mask = form.type !== 'text' ? null : form.maskKind === 'custom' ? form.customMask.trim() || null : form.maskKind || null
   const submit = () => run(async () => {
-    const body = { label: form.label, options: form.options, required: form.required, showInList: form.showInList, help: form.help || undefined, active: form.active }
-    await api(isNew ? `/custom-fields/${resource}` : `/custom-fields/${resource}/${field.id}`, { method: isNew ? 'POST' : 'PATCH', body: isNew ? { ...body, key: form.key, type: form.type } : body })
+    const body = { key: form.key, type: form.type, mask, label: form.label, options: form.options, required: form.required, showInList: form.showInList, help: form.help, active: form.active }
+    await api(isNew ? `/custom-fields/${resource}` : `/custom-fields/${resource}/${field.id}`, { method: isNew ? 'POST' : 'PATCH', body: isNew ? { ...body, help: form.help || undefined } : body })
     onSaved()
   }, 'Campo salvo')
+  const changing = !isNew && (form.key !== field.key || form.type !== field.type)
   return (
     <Modal opened onClose={onClose} title={isNew ? 'Novo campo' : `Editar campo · ${field.label}`} size="lg">
       <Stack>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label="Rótulo" placeholder="Ex.: Limite de crédito" value={form.label} required data-autofocus
-            onChange={(e) => { const label = e.currentTarget.value; setForm((f) => ({ ...f, label, key: isNew && !touchedKey ? slug(label) : f.key })) }} />
-          <TextInput label="Nome interno" description="Usado na API de integração; não muda depois" value={form.key} disabled={!isNew} ff="monospace"
+            onChange={(e) => { const label = e.currentTarget.value; setForm((f) => ({ ...f, label, key: !touchedKey ? slug(label) : f.key })) }} />
+          <TextInput label="Nome interno" description="Usado na API de integração" value={form.key} ff="monospace"
             onChange={(e) => { setTouchedKey(true); setForm({ ...form, key: e.currentTarget.value }) }} />
-          <Select label="Tipo" data={TYPES} value={form.type} onChange={(v) => setForm({ ...form, type: (v ?? 'text') as CustomField['type'] })} disabled={!isNew} allowDeselect={false} />
-          <TextInput label="Ajuda (opcional)" value={form.help} onChange={(e) => setForm({ ...form, help: e.currentTarget.value })} />
+          <Select label="Tipo" data={TYPES} value={form.type} onChange={(v) => setForm({ ...form, type: (v ?? 'text') as CustomField['type'] })} allowDeselect={false} style={{ gridColumn: '1 / -1' }} />
+          {form.type === 'text' && (
+            <Select label="Máscara" description="Formata enquanto digita e o servidor confere" placeholder="Sem máscara" data={[...MASKS, { value: 'custom', label: 'Personalizada…' }]}
+              value={form.maskKind || null} onChange={(v) => setForm({ ...form, maskKind: v ?? '' })} clearable />
+          )}
+          {form.type === 'text' && form.maskKind === 'custom' && (
+            <TextInput label="Máscara personalizada" description="9 = número, A = letra, * = qualquer" placeholder="Ex.: 999-AAA" value={form.customMask} ff="monospace"
+              onChange={(e) => setForm({ ...form, customMask: e.currentTarget.value })} />
+          )}
+          <TextInput label="Ajuda (opcional)" value={form.help} onChange={(e) => setForm({ ...form, help: e.currentTarget.value })} style={form.type === 'text' ? undefined : { gridColumn: '1 / -1' }} />
         </SimpleGrid>
-        {form.type === 'select' && <TagsInput label="Opções" description="Digite e tecle Enter" value={form.options} onChange={(v) => setForm({ ...form, options: v })} />}
+        {WITH_OPTIONS.includes(form.type) && <TagsInput label="Opções" description="Digite e tecle Enter" value={form.options} onChange={(v) => setForm({ ...form, options: v })} />}
         <Group>
           <Switch label="Obrigatório" checked={form.required} onChange={(e) => setForm({ ...form, required: e.currentTarget.checked })} />
           <Switch label="Mostrar na lista" checked={form.showInList} onChange={(e) => setForm({ ...form, showInList: e.currentTarget.checked })} />
           {!isNew && <Switch label="Ativo" checked={form.active} onChange={(e) => setForm({ ...form, active: e.currentTarget.checked })} />}
         </Group>
-        <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button onClick={submit} loading={busy} disabled={form.label.trim().length < 2 || !form.key}>Salvar</Button></Group>
+        {changing && <Text size="sm" c="orange">Os valores já gravados serão renomeados/convertidos. Se algum não servir no novo formato, o sistema avisa e não muda nada.</Text>}
+        <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button onClick={submit} loading={busy} disabled={form.label.trim().length < 2 || !form.key || (form.maskKind === 'custom' && !form.customMask.trim())}>Salvar</Button></Group>
       </Stack>
     </Modal>
   )

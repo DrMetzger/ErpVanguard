@@ -1,13 +1,10 @@
 import {
-  IconArrowsExchange, IconBarcode, IconBoxSeam, IconBuilding, IconBuildingStore, IconCategory, IconCertificate, IconFileDescription, IconGridDots,
+  IconArrowsExchange, IconBarcode, IconBoxSeam, IconBuildingStore, IconCategory, IconFileDescription, IconGridDots,
   IconLink, IconListNumbers, IconMap, IconPercentage, IconReceiptTax, IconRuler2, IconTags, IconUsersGroup,
 } from '@tabler/icons-react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { CatalogPage } from '../../components/CatalogPage'
 import { ModuleTabs } from '../../components/ModuleTabs'
-import { useUser } from '../../lib/auth'
-import Certificates from './Certificates'
-import Companies from './Companies'
 import { FiscalMatrix } from './Fiscal'
 import PriceTables from './PriceTables'
 import Products from './Products'
@@ -22,7 +19,6 @@ const OLD: Record<string, string> = {
 }
 
 export default function Cadastros() {
-  const user = useUser()
   return (
     <Routes>
       <Route index element={<Navigate to="/cadastros/produtos" replace />} />
@@ -53,15 +49,16 @@ export default function Cadastros() {
           { path: 'cfop', label: 'CFOP', icon: IconListNumbers, element: <CatalogPage name="cfop" /> },
         ]} />
       } />
-      <Route path="empresas/*" element={
-        <ModuleTabs base="/cadastros/empresas" title="Cadastros · Empresas" tabs={[
-          { path: 'empresas', label: 'Empresas e filiais', icon: IconBuilding, element: <Companies /> },
-          { path: 'certificados', label: 'Certificado digital A1', icon: IconCertificate, element: <Certificates />, hidden: user.role !== 'admin' },
-        ]} />
-      } />
+      {/* Empresas foi para Administração */}
+      <Route path="empresas/*" element={<EmpresasRedirect />} />
       {Object.entries(OLD).map(([from, to]) => <Route key={from} path={from} element={<Navigate to={`/cadastros/${to}`} replace />} />)}
       <Route path="tabelas-preco" element={<Navigate to="/cadastros/produtos/precos" replace />} />
       <Route path="*" element={<Navigate to="/cadastros/produtos" replace />} />
     </Routes>
   )
+}
+
+function EmpresasRedirect() {
+  const rest = useParams()['*']
+  return <Navigate to={`/empresas/${rest ?? ''}`} replace />
 }

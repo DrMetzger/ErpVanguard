@@ -13,6 +13,7 @@ const Cadastros = lazy(() => import('./pages/cadastros'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Customize = lazy(() => import('./pages/Customize'))
 const Parameters = lazy(() => import('./pages/Parameters'))
+const Empresas = lazy(() => import('./pages/Empresas'))
 const Stock = lazy(() => import('./pages/Stock'))
 const Faturamento = lazy(() => import('./pages/faturamento'))
 const Financeiro = lazy(() => import('./pages/financeiro'))
@@ -41,6 +42,7 @@ export default function App() {
         {user.role === 'admin' && <Route path="configuracoes" element={<Settings />} />}
         {user.role === 'admin' && <Route path="personalizar" element={<Customize />} />}
         {user.role === 'admin' && <Route path="parametros" element={<Parameters />} />}
+        {user.role === 'admin' && <Route path="empresas/*" element={<Empresas />} />}
         {modules.filter((m) => m.soon).map((m) => <Route key={m.path} path={m.path.slice(1)} element={<ModuleSoon module={m} />} />)}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
