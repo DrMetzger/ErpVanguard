@@ -10,6 +10,16 @@ const storage = {
   },
 }
 export const getToken = storage.get
+// Identificador do aparelho (só no app do celular): o servidor bloqueia aparelho por aparelho.
+let deviceId: string | null = null
+export const setDeviceId = (id: string | null) => { deviceId = id }
+const deviceHeader = (): Record<string, string> => (deviceId ? { 'X-Device-Id': deviceId } : {})
+// Aparelho bloqueado pelo administrador: sai do sistema e apaga o que estava guardado no celular.
+function onBlocked(data: any) {
+  setToken(null)
+  void import('./offline').then((m) => m.clearOfflineData())
+  window.dispatchEvent(new CustomEvent('vanguard:device-blocked', { detail: data?.message ?? 'Este aparelho foi bloqueado pelo administrador' }))
+}
 export const setToken = storage.set
 
 export class ApiError extends Error {
@@ -22,7 +32,7 @@ type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 export async function api<T = unknown>(path: string, options: { method?: Method; body?: unknown } = {}): Promise<T> {
   const { method = 'GET', body } = options
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const headers: Record<string, string> = { Accept: 'application/json', ...deviceHeader() }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -56,6 +66,7 @@ export async function api<T = unknown>(path: string, options: { method?: Method;
   if (res.status === 204) return null as T
 
   const data = await res.json().catch(() => null)
+  if (res.status === 403 && data?.code === 'DEVICE_BLOCKED') onBlocked(data)
   if (!res.ok) {
     const message = Array.isArray(data?.message) ? data.message.join('\n') : data?.message
     throw new ApiError(res.status, message || 'Erro ao comunicar com o servidor', data)
@@ -71,12 +82,13 @@ setSender(async (w) => {
   try {
     const res = await fetch(`${API_URL}/api${w.path}`, {
       method: w.method,
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Idempotency-Key': w.key, ...(w.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { Accept: 'application/json', ...deviceHeader(), Authorization: `Bearer ${token}`, 'Idempotency-Key': w.key, ...(w.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: w.body === undefined ? undefined : JSON.stringify(w.body),
     })
     if (res.ok) return 'ok'
     if (res.status >= 500) return 'offline'
     const data = await res.json().catch(() => null)
+    if (res.status === 403 && data?.code === 'DEVICE_BLOCKED') { onBlocked(data); return 'offline' }
     return { error: (Array.isArray(data?.message) ? data.message.join('; ') : data?.message) || `Erro ${res.status}` }
   } catch {
     return 'offline'
@@ -86,7 +98,7 @@ setSender(async (w) => {
 // Arquivo da API (XML, PDF) com o token: devolve o conteúdo e o nome sugerido pelo servidor.
 export async function apiFile(path: string): Promise<{ blob: Blob; name: string }> {
   const token = getToken()
-  const res = await fetch(`${API_URL}/api${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  const res = await fetch(`${API_URL}/api${path}`, { headers: { ...deviceHeader(), ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
   if (!res.ok) {
     const data = await res.json().catch(() => null)
     throw new ApiError(res.status, data?.message || 'Erro ao baixar o arquivo', data)

@@ -52,4 +52,20 @@ await call(tU, 'POST', '/catalog/units', bad, 400, { 'Idempotency-Key': key + 'b
 await call(admin, 'POST', '/catalog/units', { code: 'J' + run.slice(-4), description: 'Outra ' + run }, undefined, { 'Idempotency-Key': key })
 ok('mesma gravação reenviada (fila do celular) devolve a primeira resposta sem gravar de novo; chave é por usuário')
 
+// Bloqueio do aparelho
+const H = { 'X-Device-Id': deviceId }
+await call(tU, 'POST', `/devices/${deviceId}/block`, { reason: 'x' }, 403)
+await call(admin, 'POST', `/devices/${deviceId}/block`, { reason: 'Celular perdido' })
+let blocked = await fetch(API + '/catalog/units', { headers: { Authorization: `Bearer ${tU}`, ...H } })
+assert.equal(blocked.status, 403); const bj = await blocked.json(); assert.equal(bj.code, 'DEVICE_BLOCKED'); assert.match(bj.message, /Celular perdido/)
+const login = await fetch(API + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...H }, body: JSON.stringify({ email: u.email, password: pass }) })
+assert.equal(login.status, 403, 'não entra de novo pelo aparelho bloqueado')
+await call(tU, 'POST', '/devices/heartbeat', { deviceId, locations: [] }, 403, H)
+await call(tU, 'GET', '/catalog/units') // o mesmo usuário no computador continua
+assert.equal((await call(admin, 'GET', '/devices')).find((x) => x.id === deviceId).blocked, true)
+await call(admin, 'POST', `/devices/${deviceId}/unblock`)
+await call(tU, 'GET', '/catalog/units', undefined, undefined, H)
+await call(admin, 'POST', '/devices/nao-existe-123/block', {}, 404)
+ok('aparelho bloqueado: nada passa (nem login), mensagem com o motivo; computador segue; desbloquear libera; só admin bloqueia')
+
 console.log(`\n${passed} verificações passaram`)

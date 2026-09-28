@@ -1,15 +1,16 @@
-import { Badge, Card, Grid, Group, Stack, Table, Text, TextInput } from '@mantine/core'
-import { IconBattery2, IconDeviceMobile, IconMapPin } from '@tabler/icons-react'
+import { Badge, Button, Card, Grid, Group, Modal, Stack, Table, Text, TextInput } from '@mantine/core'
+import { IconBattery2, IconDeviceMobile, IconLock, IconLockOpen, IconMapPin } from '@tabler/icons-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef, useState } from 'react'
 import { Empty, Loading, PageHeader } from '../components/ui'
 import { api } from '../lib/api'
-import { useApi } from '../lib/hooks'
+import { useAction, useApi } from '../lib/hooks'
 
 interface Device {
   id: string; userName: string; userEmail: string; platform: string | null; model: string | null; osVersion: string | null; appVersion: string | null
   lastSeen: string; lat: number | null; lng: number | null; accuracy: number | null; locationAt: string | null; battery: number | null
+  blocked: boolean; blockedReason: string | null; blockedAt: string | null; blockedBy: string | null
 }
 interface Point { lat: number; lng: number; accuracy: number | null; at: string }
 
@@ -28,6 +29,12 @@ export default function Devices() {
   const mapEl = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const layer = useRef<L.LayerGroup | null>(null)
+  const [blocking, setBlocking] = useState<Device | null>(null)
+  const [reason, setReason] = useState('')
+  const [blockName, setBlockName] = useState('')
+  const { busy, run } = useAction()
+  const block = () => run(async () => { await api(`/devices/${encodeURIComponent(blocking!.id)}/block`, { method: 'POST', body: { reason: reason.trim() || undefined } }); setBlocking(null); setReason(''); reload() }, 'Aparelho bloqueado: o app sai do sistema na próxima ação')
+  const unblock = (d: Device) => confirm(`Desbloquear o celular de ${d.userName}?`) && run(async () => { await api(`/devices/${encodeURIComponent(d.id)}/unblock`, { method: 'POST' }); reload() }, 'Aparelho desbloqueado')
 
   useEffect(() => { const t = setInterval(reload, 60_000); return () => clearInterval(t) }, [reload])
   useEffect(() => {
@@ -49,7 +56,7 @@ export default function Devices() {
     g.clearLayers()
     const withPos = (data ?? []).filter((d) => d.lat !== null && d.lng !== null)
     for (const d of withPos) {
-      L.marker([d.lat!, d.lng!], { icon: pin(d.id === selected ? '#f59e0b' : onlineNow(d) ? '#10b981' : '#64748b') })
+      L.marker([d.lat!, d.lng!], { icon: pin(d.id === selected ? '#f59e0b' : d.blocked ? '#ef4444' : onlineNow(d) ? '#10b981' : '#64748b') })
         .bindPopup(`<b>${d.userName}</b><br>${d.model ?? ''}<br>${when(d.locationAt)}${d.accuracy ? ` · ±${Math.round(d.accuracy)} m` : ''}`)
         .on('click', () => setSelected(d.id)).addTo(g)
     }
@@ -68,11 +75,12 @@ export default function Devices() {
     <>
       <PageHeader title={<Text fw={700} size="lg">Dispositivos</Text>} description="Celulares com o app do ERP: onde estão, quando apareceram pela última vez e o trajeto do dia." />
       <Grid>
-        <Grid.Col span={{ base: 12, md: 5 }}>
+        <Grid.Col span={{ base: 12, lg: 6 }}>
           <Card p={0}>
             {loading && !data ? <Loading /> : (
+              <Table.ScrollContainer minWidth={560}>
               <Table highlightOnHover>
-                <Table.Thead><Table.Tr><Table.Th>Usuário / aparelho</Table.Th><Table.Th>Última vez</Table.Th><Table.Th>Posição</Table.Th></Table.Tr></Table.Thead>
+                <Table.Thead><Table.Tr><Table.Th>Usuário / aparelho</Table.Th><Table.Th>Última vez</Table.Th><Table.Th>Posição</Table.Th><Table.Th>Acesso</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>
                   {data?.map((d) => (
                     <Table.Tr key={d.id} onClick={() => setSelected(d.id === selected ? null : d.id)} style={{ cursor: 'pointer' }} bg={d.id === selected ? 'var(--mantine-primary-color-light)' : undefined}>
@@ -87,10 +95,22 @@ export default function Devices() {
                         {d.battery !== null && <Group gap={2} mt={2}><IconBattery2 size={14} /><Text size="xs">{Math.round(d.battery * 100)}%</Text></Group>}
                       </Table.Td>
                       <Table.Td>{d.lat !== null ? <Group gap={4} wrap="nowrap"><IconMapPin size={14} /><Text size="xs">{when(d.locationAt)}</Text></Group> : <Text size="xs" c="dimmed">sem permissão</Text>}</Table.Td>
+                      <Table.Td onClick={(e) => e.stopPropagation()}>
+                        {d.blocked ? (
+                          <Stack gap={4} align="flex-end">
+                            <Badge color="red" leftSection={<IconLock size={12} />}>Bloqueado</Badge>
+                            {d.blockedReason && <Text size="xs" c="dimmed">{d.blockedReason}</Text>}
+                            <Button size="compact-xs" variant="light" color="teal" leftSection={<IconLockOpen size={14} />} onClick={() => unblock(d)} loading={busy}>Desbloquear</Button>
+                          </Stack>
+                        ) : (
+                          <Button size="compact-xs" variant="light" color="red" leftSection={<IconLock size={14} />} onClick={() => { setReason(''); setBlockName(d.userName); setBlocking(d) }}>Bloquear</Button>
+                        )}
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
               </Table>
+              </Table.ScrollContainer>
             )}
             {data?.length === 0 && <Empty>Nenhum celular ainda. Instale o app pelo link app.erpvanguard.com.br/download e entre com um usuário.</Empty>}
           </Card>
@@ -103,7 +123,14 @@ export default function Devices() {
             </Card>
           )}
         </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 7 }}>
+        <Modal opened={!!blocking} onClose={() => setBlocking(null)} title={`Bloquear o celular de ${blockName}`} centered>
+          <Stack>
+            <Text size="sm">O aplicativo desse celular sai do sistema, apaga os dados guardados no aparelho e não entra mais até você desbloquear. O mesmo usuário continua podendo usar o computador.</Text>
+            <TextInput label="Motivo (aparece para a pessoa)" placeholder="Ex.: celular perdido, desligamento" maxLength={200} value={reason} onChange={(e) => setReason(e.currentTarget.value)} data-autofocus />
+            <Group justify="flex-end"><Button variant="default" onClick={() => setBlocking(null)}>Cancelar</Button><Button color="red" leftSection={<IconLock size={16} />} onClick={block} loading={busy}>Bloquear aparelho</Button></Group>
+          </Stack>
+        </Modal>
+        <Grid.Col span={{ base: 12, lg: 6 }}>
           <Card p={0} style={{ overflow: 'hidden' }} className="map-box"><div ref={mapEl} style={{ height: 'min(70vh, 640px)', width: '100%' }} /></Card>
         </Grid.Col>
       </Grid>

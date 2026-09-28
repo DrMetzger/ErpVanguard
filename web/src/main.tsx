@@ -13,6 +13,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './lib/auth'
 import { theme } from './theme'
+import { setDeviceId } from './lib/api'
 import { reloadForNewVersion, ScreenGuard } from './components/ScreenGuard'
 
 if (Capacitor.isNativePlatform()) import('./native')
@@ -22,7 +23,15 @@ window.addEventListener('vite:preloadError', (event) => { if (reloadForNewVersio
 
 const colorSchemeManager = localStorageColorSchemeManager({ key: 'vanguard.color-scheme' })
 
-createRoot(document.getElementById('root')!).render(
+// No app do celular, o identificador do aparelho vai em todas as chamadas (bloqueio por aparelho).
+async function start() {
+  if (Capacitor.isNativePlatform()) {
+    try { const { Device } = await import('@capacitor/device'); setDeviceId((await Device.getId()).identifier) } catch { /* segue sem */ }
+  }
+  render()
+}
+
+const render = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="dark" colorSchemeManager={colorSchemeManager}>
       <Notifications position="top-right" limit={3} autoClose={2500} />
@@ -36,3 +45,5 @@ createRoot(document.getElementById('root')!).render(
     </MantineProvider>
   </StrictMode>,
 )
+
+void start()

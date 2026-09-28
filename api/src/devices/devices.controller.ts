@@ -4,6 +4,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsISO8601, IsNumber, IsOptional, IsSt
 import { DataSource } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { requireAdmin } from '../common/access'
+import { forgetDevice } from './device.guard'
 import { one } from '../common/db'
 import type { User } from '../users/user.entity'
 
@@ -12,6 +13,9 @@ class LocationDto {
   @IsNumber() @Min(-180) @Max(180) lng: number
   @IsOptional() @IsNumber() @Min(0) accuracy?: number
   @IsISO8601() at: string
+}
+class BlockDto {
+  @IsOptional() @IsString() @Length(0, 200) reason?: string
 }
 class HeartbeatDto {
   @IsString() @Length(8, 64) deviceId: string
@@ -65,9 +69,29 @@ export class DevicesController {
     requireAdmin(me)
     return this.db.query(
       `SELECT d.id, d.user_id AS "userId", u.name AS "userName", u.email AS "userEmail", d.platform, d.model, d.os_version AS "osVersion", d.app_version AS "appVersion",
-              d.last_seen AS "lastSeen", d.last_lat AS lat, d.last_lng AS lng, d.last_accuracy AS accuracy, d.last_location_at AS "locationAt", d.battery, d.online
+              d.last_seen AS "lastSeen", d.last_lat AS lat, d.last_lng AS lng, d.last_accuracy AS accuracy, d.last_location_at AS "locationAt", d.battery, d.online,
+              d.blocked, d.blocked_reason AS "blockedReason", d.blocked_at AS "blockedAt", (SELECT name FROM users WHERE id = d.blocked_by) AS "blockedBy"
        FROM devices d JOIN users u ON u.id = d.user_id ORDER BY d.last_seen DESC`,
     )
+  }
+
+  // Bloqueia o aparelho: o app sai do sistema e não entra mais até desbloquear.
+  @Post(':id/block')
+  async block(@CurrentUser() me: User, @Param('id') id: string, @Body() dto: BlockDto) {
+    requireAdmin(me)
+    const [, count] = await this.db.query(`UPDATE devices SET blocked = true, blocked_reason = $2, blocked_at = now(), blocked_by = $3 WHERE id = $1`, [id, dto.reason?.trim() || null, me.id])
+    if (!count) throw new NotFoundException('Aparelho não encontrado')
+    forgetDevice(id)
+    return { ok: true, blocked: true }
+  }
+
+  @Post(':id/unblock')
+  async unblock(@CurrentUser() me: User, @Param('id') id: string) {
+    requireAdmin(me)
+    const [, count] = await this.db.query(`UPDATE devices SET blocked = false, blocked_reason = NULL, blocked_at = NULL, blocked_by = NULL WHERE id = $1`, [id])
+    if (!count) throw new NotFoundException('Aparelho não encontrado')
+    forgetDevice(id)
+    return { ok: true, blocked: false }
   }
 
   // Trajeto do aparelho num dia (horário de Brasília).

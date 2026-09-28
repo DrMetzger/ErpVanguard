@@ -10,7 +10,7 @@ async function bootstrap() {
   // XML de NF-e com muitos itens e certificados A1 passam de 100 KB.
   app.useBodyParser('json', { limit: '5mb' })
   app.setGlobalPrefix('api')
-  app.enableCors({ origin: config.corsOrigins, allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Idempotency-Key'], exposedHeaders: ['Content-Disposition', 'Idempotent-Replay'] })
+  app.enableCors({ origin: config.corsOrigins, allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Idempotency-Key', 'X-Device-Id'], exposedHeaders: ['Content-Disposition', 'Idempotent-Replay'] })
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
   app.enableShutdownHooks()
   await app.listen(config.port, '0.0.0.0')

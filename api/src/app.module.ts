@@ -7,6 +7,7 @@ import { CatalogModule } from './catalog/catalog.module'
 import { BiModule } from './bi/bi.module'
 import { DevicesModule } from './devices/devices.module'
 import { IdempotencyInterceptor } from './devices/idempotency.interceptor'
+import { DeviceGuard } from './devices/device.guard'
 import { CompaniesModule } from './companies/companies.module'
 import { CreditModule } from './credit/credit.module'
 import { CustomFieldsModule } from './custom/custom-fields.module'
@@ -49,6 +50,6 @@ import { UsersModule } from './users/users.module'
     DevicesModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor }],
+  providers: [{ provide: APP_GUARD, useClass: DeviceGuard }, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor }],
 })
 export class AppModule {}

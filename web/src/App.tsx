@@ -1,5 +1,6 @@
-import { Center, Loader } from '@mantine/core'
-import { lazy, Suspense } from 'react'
+import { Button, Center, Loader, Stack, Text, ThemeIcon, Title } from '@mantine/core'
+import { IconLock } from '@tabler/icons-react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import { useAuth } from './lib/auth'
@@ -23,7 +24,14 @@ const Users = lazy(() => import('./pages/Users'))
 const Devices = lazy(() => import('./pages/Devices'))
 
 export default function App() {
-  const { user, loading } = useAuth()
+  const { user, loading, logout } = useAuth()
+  const [blocked, setBlocked] = useState<string | null>(null)
+  useEffect(() => {
+    const on = (e: Event) => { setBlocked((e as CustomEvent<string>).detail); logout() }
+    window.addEventListener('vanguard:device-blocked', on)
+    return () => window.removeEventListener('vanguard:device-blocked', on)
+  }, [logout])
+  if (blocked) return <BlockedScreen message={blocked} />
   if (loading) return <Center h="100vh"><Loader type="dots" /></Center>
   if (!user) return <Login />
 
@@ -59,4 +67,19 @@ export default function App() {
 function FiscalRedirect() {
   const tab = useParams()['*']
   return <Navigate to={`/cadastros/fiscal/${tab ?? ''}`} replace />
+}
+
+// Aparelho bloqueado pelo administrador (Administração › Dispositivos).
+function BlockedScreen({ message }: { message: string }) {
+  return (
+    <Center mih="100vh" p="md">
+      <Stack align="center" maw={420} ta="center">
+        <ThemeIcon size={72} radius="xl" color="red" variant="light"><IconLock size={40} /></ThemeIcon>
+        <Title order={2}>Aparelho bloqueado</Title>
+        <Text>{message}</Text>
+        <Text size="sm" c="dimmed">Fale com o administrador do sistema da sua empresa para liberar este celular.</Text>
+        <Button variant="default" onClick={() => window.location.reload()}>Tentar de novo</Button>
+      </Stack>
+    </Center>
+  )
 }
