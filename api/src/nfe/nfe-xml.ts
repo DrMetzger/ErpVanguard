@@ -1,3 +1,4 @@
+import { ieValida } from '../common/br'
 import type { ItemTaxes } from '../taxes/tax-engine'
 
 // Montagem do XML da NF-e (modelo 55, leiaute 4.00) a partir da nota de venda e dos impostos do nosso motor.
@@ -252,6 +253,8 @@ export function buildNfeXml(input: NfeInput) {
   const indIEDest = dest.taxpayer === '1' ? '1' : dest.taxpayer === '2' ? '2' : '9'
   const destIe = indIEDest === '1' ? onlyDigits(dest.ie) : ''
   if (indIEDest === '1' && !destIe) throw new Error('Cliente contribuinte (1) sem inscrição estadual: informe a IE ou mude para isento/não contribuinte')
+  // Confere a IE antes de enviar (evita a rejeição 210 da SEFAZ).
+  if (indIEDest === '1' && dest.uf && !ieValida(destIe, dest.uf)) throw new Error(`Inscrição estadual do cliente (${destIe}) é inválida para ${dest.uf}: corrija no cadastro do cliente`)
   const destXml = group('dest', (doc.length === 11 ? tag('CPF', doc) : tag('CNPJ', doc)) + tag('xNome', homolog ? HOMOLOG_DEST : text(dest.name, 60))
     + address('enderDest', dest) + tag('indIEDest', indIEDest) + tag('IE', destIe) + tag('email', text(dest.email?.split(/[;,\s]/)[0], 60)))
 
