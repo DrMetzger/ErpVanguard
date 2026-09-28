@@ -1,8 +1,8 @@
 import { ActionIcon, Alert, Anchor, Badge, Button, Card, Drawer, Group, Menu, Modal, NumberInput, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput, Textarea, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { IconArrowBackUp, IconCash, IconDots, IconEdit, IconPlus, IconSearch, IconX } from '@tabler/icons-react'
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Money } from '../../components/inputs'
 import { Empty, Loading, Status } from '../../components/ui'
 import { api } from '../../lib/api'
@@ -31,7 +31,10 @@ function Tile({ label, value, tone }: { label: string; value: number | undefined
 
 // Contas a receber (R) ou a pagar (P).
 export default function Titles({ kind }: { kind: 'R' | 'P' }) {
-  const [status, setStatus] = useState('aberto')
+  // ?titulo=<id> (vindo da nota ou do pedido): mostra todos e abre o título.
+  const [search, setSearch] = useSearchParams()
+  const linked = search.get('titulo')
+  const [status, setStatus] = useState(linked ? 'todos' : 'aberto')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [query, setQuery] = useState('')
@@ -52,6 +55,8 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
 
   const cancel = (t: Title) => confirm(`Cancelar "${t.description}"?`) && run(() => api(`/finance/titles/${t.id}/cancel`, { method: 'POST' }).then(refresh), 'Título cancelado')
   const open = (t: Title) => run(async () => setViewing(await api<Title>(`/finance/titles/${t.id}`)))
+  useEffect(() => { if (linked) open({ id: linked } as Title) }, [linked]) // eslint-disable-line react-hooks/exhaustive-deps
+  const closeDrawer = () => { setViewing(null); if (linked) setSearch({}, { replace: true }) }
 
   return (
     <>
@@ -80,7 +85,7 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
               </Table.Thead>
               <Table.Tbody>
                 {data?.map((t) => (
-                  <Table.Tr key={t.id}>
+                  <Table.Tr key={t.id} bg={t.id === linked ? 'var(--mantine-primary-color-light)' : undefined}>
                     <Table.Td>{date(t.dueDate)}{t.daysOverdue > 0 && <Text size="xs" c="red">{t.daysOverdue} dia(s) em atraso</Text>}</Table.Td>
                     <Table.Td>{t.partner ?? <Text span c="dimmed">—</Text>}</Table.Td>
                     <Table.Td>
@@ -118,7 +123,7 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
       {paying && <PayModal title={paying} onClose={() => setPaying(null)} onDone={() => { setPaying(null); refresh() }} />}
       {creating && <NewTitleModal kind={kind} onClose={() => setCreating(false)} onDone={() => { setCreating(false); refresh() }} />}
       {editing && <DueDateModal title={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); refresh() }} />}
-      <TitleDrawer title={viewing} onClose={() => setViewing(null)} onChange={(t) => { setViewing(t); refresh() }} />
+      <TitleDrawer title={viewing} onClose={closeDrawer} onChange={(t) => { setViewing(t); refresh() }} />
     </>
   )
 }

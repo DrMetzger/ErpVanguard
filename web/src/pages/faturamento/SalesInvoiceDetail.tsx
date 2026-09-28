@@ -1,7 +1,7 @@
 import { Alert, Anchor, Button, Card, Group, Modal, SimpleGrid, Stack, Table, Text, Textarea } from '@mantine/core'
 import { IconArrowLeft, IconPrinter, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Loading, PageHeader, ReportHeader, Status } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useUser } from '../../lib/auth'
@@ -19,6 +19,7 @@ const Fact = ({ label, children }: { label: string; children: React.ReactNode })
 // Espelho da nota de saída e a NF-e na SEFAZ (XML, transmissão, DANFE e eventos).
 export default function SalesInvoiceDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const user = useUser()
   const { data: nf, error, setData } = useApi<SalesInvoice>(`/sales-invoices/${id}`)
   const reload = async () => setData(await api<SalesInvoice>(`/sales-invoices/${id}`))
@@ -86,12 +87,12 @@ export default function SalesInvoiceDetail() {
       <Card>
         <Text fw={700} mb="sm">{nf.titles[0]?.docType === 'NDF' ? 'Débito do fornecedor (NDF, no contas a pagar)' : 'Parcelas (contas a receber)'}</Text>
         {nf.titles.length === 0 ? <Text size="sm" c="dimmed">Esta operação não gera financeiro.</Text> : (
-          <Table>
+          <Table highlightOnHover>
             <Table.Thead><Table.Tr><Table.Th>Parcela</Table.Th><Table.Th>Vencimento</Table.Th><Table.Th ta="right">Valor</Table.Th><Table.Th ta="right">Recebido</Table.Th><Table.Th>Situação</Table.Th></Table.Tr></Table.Thead>
             <Table.Tbody>
               {nf.titles.map((t) => (
-                <Table.Tr key={t.id}>
-                  <Table.Td>{t.installment}/{t.installments}</Table.Td><Table.Td>{date(t.dueDate)}</Table.Td>
+                <Table.Tr key={t.id} style={{ cursor: 'pointer' }} title="Abrir no Financeiro" onClick={() => navigate(`/financeiro/${t.kind === 'P' ? 'pagar' : 'receber'}?titulo=${t.id}`)}>
+                  <Table.Td><Anchor component="span" size="sm">{t.installment}/{t.installments}</Anchor></Table.Td><Table.Td>{date(t.dueDate)}</Table.Td>
                   <Table.Td ta="right">{money(t.amount)}</Table.Td><Table.Td ta="right">{money(t.paidAmount)}</Table.Td><Table.Td><Status value={t.status} /></Table.Td>
                 </Table.Tr>
               ))}
