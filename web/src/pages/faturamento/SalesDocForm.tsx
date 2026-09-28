@@ -1,6 +1,6 @@
 import { ActionIcon, Alert, Anchor, Badge, Button, Card, Group, Loader, Modal, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
-import { IconAlertTriangle, IconArrowBackUp, IconArrowLeft, IconFileInvoice, IconPlus, IconThumbDown, IconTrash, IconTrophy, IconX } from '@tabler/icons-react'
+import { IconAlertTriangle, IconArrowBackUp, IconArrowLeft, IconFileInvoice, IconMail, IconPlus, IconThumbDown, IconTrash, IconTrophy, IconX } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BrNumber, Money } from '../../components/inputs'
@@ -13,6 +13,7 @@ import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction } from '../../lib/hooks'
 import type { Product } from '../../lib/types'
 import { KIND, type DocKind } from './SalesDocs'
+import { EmailHistory, SendEmailModal } from './SendEmail'
 import { ItemTaxBadge, TaxTotalsBlock } from './TaxSummary'
 import type { ItemTaxes, SalesDoc, SalesInvoice, SalesOrderItem, TaxTotals } from './types'
 
@@ -44,6 +45,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
   const [previewing, setPreviewing] = useState(false)
   const [losing, setLosing] = useState(false)
   const [reason, setReason] = useState('')
+  const [mailing, setMailing] = useState(false)
   const { busy, run } = useAction()
 
   const apply = (o: SalesDoc) => {
@@ -123,6 +125,11 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
           {doc.quoteCode && doc.quoteId && <Button component={Link} to={`/faturamento/orcamentos/${doc.quoteId}`} variant="subtle">Orçamento {doc.quoteCode}</Button>}
           {doc.orderCode && doc.orderId && <Button component={Link} to={`/faturamento/pedidos/${doc.orderId}`} variant="light">Pedido {doc.orderCode}</Button>}
           {doc.invoice && <Button component={Link} to={`/faturamento/notas/${doc.invoice.id}`} variant="light" leftSection={<IconFileInvoice size={16} />}>{doc.invoice.label}</Button>}
+          {doc.status !== 'cancelado' && (
+            <Tooltip label="Salve as alterações antes de enviar" disabled={!dirty}>
+              <Button variant="light" leftSection={<IconMail size={16} />} onClick={() => setMailing(true)} disabled={dirty}>Enviar por e-mail</Button>
+            </Tooltip>
+          )}
           {kind === 'quote' && doc.status === 'aberto' && !dirty && <Button leftSection={<IconTrophy size={16} />} onClick={win} loading={busy}>Ganho: gerar pedido</Button>}
           {kind === 'quote' && doc.status === 'aberto' && <Button variant="subtle" color="red" leftSection={<IconThumbDown size={16} />} onClick={() => setLosing(true)}>Perdido</Button>}
           {kind === 'quote' && doc.status === 'perdido' && <Button variant="light" leftSection={<IconArrowBackUp size={16} />} onClick={() => post('reopen', 'Orçamento reaberto')} loading={busy}>Reabrir</Button>}
@@ -203,6 +210,9 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
           )}
         </Card>
       </SimpleGrid>
+
+      {doc?.emails && <EmailHistory emails={doc.emails} />}
+      {doc && <SendEmailModal opened={mailing} onClose={() => setMailing(false)} api={k.api} id={doc.id} code={doc.code} onSent={(emails) => setDoc({ ...doc, emails })} />}
 
       <Modal opened={losing} onClose={() => setLosing(false)} title={`Orçamento ${doc?.code} perdido`}>
         <Stack>

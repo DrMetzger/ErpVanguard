@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Post, Put, ServiceUnavailableException } from '@nestjs/common'
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator'
+import { Type } from 'class-transformer'
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { UFS } from '../catalog/resources'
 import { requireAdmin } from '../common/access'
@@ -30,6 +31,18 @@ class NfeDto {
   @IsBoolean() autoAi: boolean
 }
 
+class SmtpDto {
+  @IsString() @Matches(/^[A-Za-z0-9.\-]{1,200}$/, { message: 'Servidor SMTP inválido' }) host: string
+  @Type(() => Number) @IsInt() @Min(1) @Max(65535, { message: 'Porta inválida' }) port: number
+  @IsIn(['ssl', 'starttls', 'nenhuma']) security: 'ssl' | 'starttls' | 'nenhuma'
+  @IsOptional() @IsString() @MaxLength(200) user?: string
+  @IsOptional() @IsString() @Length(1, 300) password?: string
+  @IsOptional() @IsBoolean() clearPassword?: boolean
+  @IsOptional() @IsString() @MaxLength(100) @Matches(/^[^\r\n<>"]*$/, { message: 'Nome do remetente inválido' }) fromName?: string
+  @IsEmail({}, { message: 'E-mail do remetente inválido' }) fromEmail: string
+  @IsOptional() @ValidateIf((o) => !!o.replyTo) @IsEmail({}, { message: 'E-mail de resposta inválido' }) replyTo?: string
+}
+
 class CompanyDto {
   @IsString() @Length(0, 200) name: string
   @IsString() cnpj: string
@@ -55,6 +68,11 @@ export class SettingsController {
       nfe: await this.settings.nfe(),
       serasa: await this.settings.serasa().then((s) => ({ enabled: s.enabled, environment: s.environment, clientId: s.clientId, secretHint: s.clientSecret ? `••••${s.clientSecret.slice(-4)}` : null })),
       company: await this.settings.company(),
+      // A senha nunca sai daqui: só o aviso de que existe.
+      smtp: await this.settings.smtp().then((s) => ({
+        configured: !!s.host && !!s.fromEmail, source: s.source, host: s.host, port: s.port, security: s.security, user: s.user,
+        passwordHint: s.password ? '••••••••' : null, fromName: s.fromName, fromEmail: s.fromEmail, replyTo: s.replyTo,
+      })),
     }
   }
 
@@ -73,6 +91,13 @@ export class SettingsController {
       if (!(dto.clientId ?? current.clientId) || !(dto.clientSecret ?? current.clientSecret)) throw new BadRequestException('Para ativar, informe o client ID e o client secret do contrato com a Serasa')
     }
     await this.settings.saveSerasa(dto, me.id)
+    return this.get(me)
+  }
+
+  @Put('smtp')
+  async saveSmtp(@CurrentUser() me: User, @Body() dto: SmtpDto) {
+    requireAdmin(me)
+    await this.settings.saveSmtp(dto, me.id)
     return this.get(me)
   }
 

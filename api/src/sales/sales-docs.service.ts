@@ -180,6 +180,12 @@ export class SalesDocsService {
     }
     if (kind === 'quote' && open && doc.validUntil && doc.validUntil < new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })) warnings.push('Orçamento vencido: confira preços e validade antes de ganhar')
     const extra: Record<string, unknown> = {}
+    // Histórico de envio por e-mail ao cliente.
+    extra.emails = await db.query(
+      `SELECT e.id, e.to_addr AS "to", e.cc, e.status, e.error, e.created_at AS "sentAt", u.name AS "userName"
+       FROM sales_doc_emails e JOIN users u ON u.id = e.user_id WHERE e.doc_kind = $1 AND e.doc_id = $2 ORDER BY e.created_at DESC LIMIT 20`,
+      [kind, id],
+    )
     if (kind === 'order') {
       const invoice = await one(db, `SELECT id, number, series FROM sales_invoices WHERE order_id = $1 AND status = 'emitida'`, [id])
       extra.invoice = invoice ? { id: invoice.id, label: `NF ${invoice.number}/${invoice.series}` } : null

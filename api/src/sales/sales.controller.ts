@@ -8,6 +8,7 @@ import { addDays, categoryByCode, createTitles, round2, splitAmount, termDays, t
 import { code, found } from '../purchasing/purchasing.helpers'
 import { ParametersService } from '../params/parameters.service'
 import { SalesDocDto, SalesDocsService } from './sales-docs.service'
+import { SalesEmailService, SendEmailDto } from './sales-email.service'
 import type { User } from '../users/user.entity'
 
 class ListQuery {
@@ -35,7 +36,7 @@ type Tx = EntityManager | DataSource
 // Pedidos de venda e notas de saída.
 @Controller()
 export class SalesController {
-  constructor(private readonly db: DataSource, private readonly docs: SalesDocsService, private readonly params: ParametersService) {}
+  constructor(private readonly db: DataSource, private readonly docs: SalesDocsService, private readonly params: ParametersService, private readonly email: SalesEmailService) {}
 
   // Preço sugerido e saldo em estoque para a tela do pedido.
   @Get('sales/price')
@@ -93,6 +94,19 @@ export class SalesController {
       await this.docs.save(tx, 'order', id, dto)
       return this.docs.load(tx, 'order', id, me)
     })
+  }
+
+  @Get('sales-orders/:id/email')
+  emailDraft(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
+    this.requireSales(me)
+    return this.email.draft('order', id, me)
+  }
+
+  @Post('sales-orders/:id/email')
+  @HttpCode(200)
+  sendEmail(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendEmailDto) {
+    this.requireSales(me)
+    return this.email.send('order', id, me, dto)
   }
 
   @Post('sales-orders/:id/cancel')
