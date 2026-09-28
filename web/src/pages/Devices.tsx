@@ -104,7 +104,7 @@ export default function Devices() {
           )}
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 7 }}>
-          <Card p={0} style={{ overflow: 'hidden' }}><div ref={mapEl} style={{ height: 'min(70vh, 640px)', width: '100%' }} /></Card>
+          <Card p={0} style={{ overflow: 'hidden' }} className="map-box"><div ref={mapEl} style={{ height: 'min(70vh, 640px)', width: '100%' }} /></Card>
         </Grid.Col>
       </Grid>
     </>

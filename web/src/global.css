@@ -45,3 +45,48 @@ a { color: inherit; }
 .photo-tile .photo-actions { opacity: 0; transition: opacity 120ms ease; }
 .photo-tile:hover .photo-actions, .photo-tile:focus-within .photo-actions { opacity: 1; }
 @media (hover: none) { .photo-tile .photo-actions { opacity: 1; } }
+
+/* ── Celular (até 768 px): sem rolar para o lado ─────────────────────────────── */
+@media (max-width: 48em) {
+  /* Tabelas viram cartões: cada linha é um cartão e cada campo mostra o nome da coluna */
+  .mantine-TableScrollContainer-scrollContainer { --table-min-width: 0px !important; }
+  .mantine-TableScrollContainer-scrollContainerInner { min-width: 0 !important; width: 100% !important; }
+  table.mantine-Table-table:not(.keep-table) { width: 100% !important; min-width: 0 !important; }
+  table.mantine-Table-table:not(.keep-table) { display: block; }
+  table.mantine-Table-table:not(.keep-table) thead { display: none; }
+  table.mantine-Table-table:not(.keep-table) tbody, table.mantine-Table-table:not(.keep-table) tfoot { display: block; }
+  table.mantine-Table-table:not(.keep-table) tr {
+    display: block; margin: 10px; padding: 8px 12px; border: 1px solid var(--mantine-color-default-border);
+    border-radius: var(--mantine-radius-md); background: var(--mantine-color-body);
+  }
+  table.mantine-Table-table:not(.keep-table) td {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    border: none !important; padding: 5px 0 !important; text-align: right !important; white-space: normal !important; min-height: 30px;
+  }
+  table.mantine-Table-table:not(.keep-table) td::before {
+    content: attr(data-label); font-size: 12px; font-weight: 600; color: var(--mantine-color-dimmed); text-align: left; flex: 0 1 45%;
+  }
+  table.mantine-Table-table:not(.keep-table) td[data-label=""]::before, table.mantine-Table-table:not(.keep-table) td:not([data-label])::before { display: none; }
+  table.mantine-Table-table:not(.keep-table) td[data-label=""] { justify-content: flex-end; }
+  /* Primeira coluna (número, nome, código) é o título do cartão */
+  table.mantine-Table-table:not(.keep-table) td:first-child { font-weight: 700; font-size: 15px; border-bottom: 1px solid var(--mantine-color-default-border) !important; padding-bottom: 8px !important; margin-bottom: 4px; }
+  table.mantine-Table-table:not(.keep-table) td > * { max-width: 100%; }
+  table.mantine-Table-table:not(.keep-table) td .mantine-Input-wrapper, table.mantine-Table-table:not(.keep-table) td .mantine-InputWrapper-root { flex: 1 1 55%; }
+
+  /* Formulários (janelas) em tela cheia */
+  .mantine-Modal-inner { padding: 0 !important; }
+  .mantine-Modal-content { flex: 0 0 100% !important; max-width: 100% !important; width: 100% !important; max-height: 100dvh !important; min-height: 100dvh; border-radius: 0 !important; }
+
+  /* Filtros (Todos / Em aberto / …) quebram linha em vez de sair da tela */
+  .mantine-SegmentedControl-root { flex-wrap: wrap; max-width: 100%; }
+  .mantine-SegmentedControl-indicator { display: none; }
+  .mantine-SegmentedControl-control { flex: 1 1 auto; }
+  .mantine-SegmentedControl-label[data-active] { background: var(--mantine-primary-color-filled); color: var(--mantine-primary-color-contrast); border-radius: var(--mantine-radius-sm); }
+
+  /* Campos de filtro com largura fixa ocupam a linha toda */
+  .mantine-Group-root > .mantine-InputWrapper-root, .mantine-Group-root > .mantine-Input-wrapper { flex: 1 1 100%; width: auto !important; max-width: none !important; }
+  .mantine-AppShell-main { padding-left: 10px !important; padding-right: 10px !important; }
+}
+
+/* Mapa (Leaflet) não passa por cima do menu nem das janelas */
+.map-box { position: relative; z-index: 0; isolation: isolate; }

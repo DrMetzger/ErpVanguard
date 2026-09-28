@@ -155,10 +155,10 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
           title={blocked ? 'Antes de preencher: falta cadastrar' : `Pendências para emitir a nota${kind === 'quote' ? ' (o orçamento pode ser salvo)' : ' (o pedido pode ser salvo)'}`}>
           <Stack gap={4}>
             {readiness.issues.map((i) => (
-              <Group key={i.key + i.message} gap="xs" wrap="nowrap">
+              <Group key={i.key + i.message} gap="xs" wrap="wrap" rowGap={0}>
                 <Text size="sm">{i.message}</Text>
                 {isAdmin
-                  ? <Anchor component={Link} to={i.link} size="sm" fw={600} style={{ whiteSpace: 'nowrap' }}>{i.link === '/empresas' ? 'Abrir Administração › Empresas' : i.link === '/parametros' ? 'Abrir Parâmetros' : 'Corrigir'}</Anchor>
+                  ? <Anchor component={Link} to={i.link} size="sm" fw={600}>{i.link === '/empresas' ? 'Abrir Administração › Empresas' : i.link === '/parametros' ? 'Abrir Parâmetros' : 'Corrigir'}</Anchor>
                   : <Text size="xs" c="dimmed">(peça ao administrador)</Text>}
               </Group>
             ))}

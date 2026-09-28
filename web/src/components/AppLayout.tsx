@@ -8,6 +8,7 @@ import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-r
 import { ScreenGuard } from './ScreenGuard'
 import { OfflineBar } from './OfflineBar'
 import { NativeServices } from './NativeServices'
+import { ResponsiveTables } from './ResponsiveTables'
 import { useAuth, useUser } from '../lib/auth'
 import { home, modules } from '../modules'
 import { CADASTRO_GROUPS } from '../pages/cadastros/groups'
@@ -169,6 +170,7 @@ export default function AppLayout() {
         <Box maw={1280} mx="auto">
           <OfflineBar />
           <NativeServices />
+          <ResponsiveTables />
           <ScreenGuard resetKey={location.pathname}><Outlet /></ScreenGuard>
         </Box>
       </AppShell.Main>
