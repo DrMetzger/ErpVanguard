@@ -133,6 +133,7 @@ export class SettingsController {
           { id: 'p2', sku: 'LUV-01', name: 'Luva nitrílica caixa 100', ncm: '40151900', unit: 'CX' },
         ],
         gemini,
+        20_000,
       )
       return { ok: matches[0]?.productId === 'p1', model, seconds: Math.round((Date.now() - started) / 100) / 10, answer: matches[0]?.reason ?? null }
     } catch (error: any) {

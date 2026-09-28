@@ -33,7 +33,7 @@ export interface GeminiOptions { apiKey: string | null; model: string; fallbackM
 
 // Pede ao Gemini para ligar cada item da nota a um produto do cadastro.
 // Só devolve produtos que existem na lista enviada; o resto vira null.
-export async function matchWithGemini(items: AiItem[], candidates: AiCandidate[], opts: GeminiOptions): Promise<{ matches: AiMatch[]; model: string | null }> {
+export async function matchWithGemini(items: AiItem[], candidates: AiCandidate[], opts: GeminiOptions, deadlineMs?: number): Promise<{ matches: AiMatch[]; model: string | null }> {
   if (!opts.apiKey || !items.length || !candidates.length) return { matches: [], model: null }
 
   const prompt = `Você é um assistente de compras de um ERP brasileiro.
@@ -48,7 +48,7 @@ ${JSON.stringify(items)}
 PRODUTOS DO CADASTRO:
 ${JSON.stringify(candidates)}`
 
-  const { parsed, model: used } = await generateJson(prompt, opts)
+  const { parsed, model: used } = await generateJson(prompt, opts, deadlineMs)
   const valid = new Set(candidates.map((c) => c.id))
   const numbersSent = new Set(items.map((i) => i.itemNumber))
   // O modelo às vezes embrulha a lista num objeto ({"items": [...]}).
@@ -65,7 +65,10 @@ ${JSON.stringify(candidates)}`
 }
 
 // Chamada genérica ao Gemini pedindo JSON: modelo principal, reservas e novas tentativas.
-export async function generateJson(prompt: string, opts: GeminiOptions): Promise<{ parsed: any; model: string | null }> {
+// deadlineMs: tempo total para todas as tentativas (o teste da tela usa pouco para não parecer travado).
+export async function generateJson(prompt: string, opts: GeminiOptions, deadlineMs = 120_000): Promise<{ parsed: any; model: string | null }> {
+  const deadline = Date.now() + deadlineMs
+  const left = () => deadline - Date.now()
   const request = (model: string) =>
     fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
@@ -74,7 +77,7 @@ export async function generateJson(prompt: string, opts: GeminiOptions): Promise
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0 },
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(Math.max(1_000, Math.min(45_000, left()))),
     })
 
   // Cada modelo tenta algumas vezes em 429/5xx; se continuar lotado (ou não
@@ -82,9 +85,18 @@ export async function generateJson(prompt: string, opts: GeminiOptions): Promise
   const models = [...new Set([opts.model, ...opts.fallbackModels])]
   let res: Response | null = null
   let used: string | null = null
+  let timedOut = false
   outer: for (const model of models) {
     for (let attempt = 1; attempt <= RETRIES; attempt++) {
-      res = await request(model)
+      if (left() <= 1_000) { timedOut = true; break outer }
+      try {
+        res = await request(model)
+      } catch (error: any) {
+        // Sem resposta (demorou ou caiu a conexão): passa para o próximo modelo.
+        logger.warn(`${model} não respondeu: ${error.name === 'TimeoutError' ? 'tempo esgotado' : error.message}`)
+        res = null
+        break
+      }
       if (res.ok) {
         used = model
         if (model !== opts.model) logger.warn(`Usando modelo reserva ${model}`)
@@ -94,12 +106,15 @@ export async function generateJson(prompt: string, opts: GeminiOptions): Promise
       if (!RETRYABLE.has(res.status)) break outer // erro definitivo (chave, requisição)
       if (attempt < RETRIES) {
         logger.warn(`${model} respondeu ${res.status}, tentando de novo (${attempt + 1}/${RETRIES})`)
-        await new Promise((r) => setTimeout(r, retryDelayMs * attempt))
+        await new Promise((r) => setTimeout(r, Math.min(retryDelayMs * attempt, Math.max(0, left() - 1_000))))
       }
     }
-    logger.warn(`${model} indisponível (${res!.status}), tentando o próximo modelo`)
+    logger.warn(`${model} indisponível (${res?.status ?? 'sem resposta'}), tentando o próximo modelo`)
   }
-  if (!res || !res.ok) {
+  if (timedOut || !res) {
+    throw new Error(`O Gemini não respondeu em ${Math.round(deadlineMs / 1000)} segundos (modelos tentados: ${models.join(', ')}). Tente de novo em instantes ou troque o modelo principal.`)
+  }
+  if (!res.ok) {
     const status = res?.status ?? 0
     logger.error(`Gemini respondeu ${status}: ${res ? (await res.text()).slice(0, 300) : ''}`)
     throw new Error(RETRYABLE.has(status) || status === 404 ? 'O Gemini está sobrecarregado agora. Tente de novo em alguns instantes.' : `O Gemini respondeu com erro ${status}`)
