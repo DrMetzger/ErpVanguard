@@ -16,6 +16,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { ILike, QueryFailedError, Repository } from 'typeorm'
 import { CustomFieldsService } from '../custom/custom-fields.service'
 import { CreateProductDto, UpdateProductDto } from './product.dto'
+import { removeVideoFile } from './product-videos.controller'
 import { Product } from './product.entity'
 
 const UNIQUE_VIOLATION = '23505'
@@ -64,7 +65,9 @@ export class ProductsController {
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string) {
+    const files: { storage_key: string }[] = await this.products.query(`SELECT storage_key FROM product_videos WHERE product_id = $1 AND kind = 'file'`, [id])
     const { affected } = await this.products.delete({ id })
+    for (const f of files) removeVideoFile(f.storage_key)
     if (!affected) throw new NotFoundException('Produto não encontrado')
   }
 

@@ -12,6 +12,7 @@ import type { Product } from '../../lib/types'
 import { CustomFieldsInputs, customBody, customDisplay } from '../../components/CustomFields'
 import { layoutHelpers, useCustomization, type Customization } from '../../lib/custom'
 import { ProductPhotos, uploadPending, type PendingPhoto } from '../../components/ProductPhotos'
+import { ProductVideos } from '../../components/ProductVideos'
 
 const ORIGINS = [
   { value: '0', label: '0 · Nacional' }, { value: '1', label: '1 · Estrangeira (importação direta)' }, { value: '2', label: '2 · Estrangeira (mercado interno)' },
@@ -130,6 +131,7 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
           {L.show('minStock') && <BrNumber label={L.label('minStock', 'Estoque mínimo')} style={{ order: L.order('minStock') }} decimalScale={4} value={form.minStock} onChange={(v) => set('minStock', v)} />}
         </SimpleGrid>
         <ProductPhotos productId={product.id} pending={pending} onPending={setPending} onChanged={() => setPhotosChanged(true)} />
+        <ProductVideos productId={product.id} />
         <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         {!isNew && <Switch label="Produto ativo" checked={form.active} onChange={(e) => set('active', e.currentTarget.checked)} />}
         <Group justify="flex-end"><Button variant="default" onClick={photosChanged ? onSaved : onClose}>{photosChanged ? 'Fechar' : 'Cancelar'}</Button><Button type="submit" loading={busy}>Salvar</Button></Group>

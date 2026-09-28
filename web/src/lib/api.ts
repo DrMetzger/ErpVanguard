@@ -1,6 +1,6 @@
 const TOKEN_KEY = 'vanguard.token'
 // No site fica vazio (mesmo domínio); no app Android aponta para o servidor.
-const API_URL: string = import.meta.env.VITE_API_URL ?? ''
+export const API_URL: string = import.meta.env.VITE_API_URL ?? ''
 
 const storage = {
   get: () => { try { return localStorage.getItem(TOKEN_KEY) } catch { return null } },

@@ -29,7 +29,10 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
       GEMINI_FALLBACK_MODELS: ${GEMINI_FALLBACK_MODELS:-}
+      MEDIA_DIR: /data/media
       TZ: America/Sao_Paulo
+    volumes:
+      - media-data:/data/media
     depends_on:
       db:
         condition: service_healthy
@@ -51,5 +54,6 @@ services:
 
 volumes:
   db-data:
+  media-data:
   caddy-data:
   caddy-config:

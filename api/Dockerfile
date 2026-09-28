@@ -12,6 +12,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+RUN mkdir -p /data/media && chown node:node /data/media
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
