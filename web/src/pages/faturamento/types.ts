@@ -11,10 +11,12 @@ export interface ItemTaxes {
   pis: { cst: string; base: number; rate: number; value: number }
   cofins: { cst: string; base: number; rate: number; value: number }
   freight: number; discount: number; total: number; rules: string[]
+  approx?: { rate: number; value: number }
 }
 export interface TaxTotals {
   products: number; discount: number; freight: number; icmsBase: number; icms: number; stBase: number; st: number; ipi: number
   fcp: number; difal: number; fcpDest: number; pis: number; cofins: number; snCredit: number; total: number
+  approxTax?: number
 }
 export interface SalesOrderItem {
   id?: string; productId: string; sku: string; name: string; unit: string; stock: number; quantity: number; unitPrice: number; discountPct: number; total: number
@@ -35,9 +37,16 @@ export interface SalesInvoiceRow {
 export interface SalesInvoice {
   id: string; number: number; series: number; issuedAt: string; productsTotal: number; freight: number; discount: number; total: number; status: string
   sefazStatus: string; cancelReason: string | null; orderId: string | null; orderCode: string | null; operationLabel: string; companyId: string
+  model: string; taxRegime: string; companyLabel: string
   customerName: string; customerDocument: string; customerIe: string | null; customerStreet: string | null; customerNumber: string | null
   customerDistrict: string | null; customerCity: string | null; customerUf: string | null; customerZip: string | null
   items: { itemNumber: number; sku: string; description: string; ncm: string | null; unit: string; cfop: string; tesCode: string; quantity: number; unitPrice: number; total: number; taxes: ItemTaxes | null }[]
   taxes: TaxTotals | null
   titles: { id: string; kind: 'R' | 'P'; docType: string; installment: number; installments: number; dueDate: string; amount: number; paidAmount: number; status: string }[]
+}
+export interface Readiness {
+  ready: boolean; complete: boolean
+  issues: { key: string; message: string; blocking: boolean; link: string }[]
+  company: { id: string; label: string; regime: string; uf: string } | null
+  numbering: { series: number; model: string | null; nextNumber: number | null }
 }

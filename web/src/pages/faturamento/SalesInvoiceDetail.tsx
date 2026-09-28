@@ -8,7 +8,7 @@ import { useUser } from '../../lib/auth'
 import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction, useApi } from '../../lib/hooks'
 import { dateTime } from './SalesInvoices'
-import { ItemTaxBadge, TaxTotalsBlock } from './TaxSummary'
+import { ItemTaxBadge, REGIMES, TaxTotalsBlock } from './TaxSummary'
 import type { SalesInvoice } from './types'
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -35,7 +35,7 @@ export default function SalesInvoiceDetail() {
       <PageHeader
         back={<Anchor component={Link} to="/faturamento/notas" size="sm" c="dimmed"><Group gap={4}><IconArrowLeft size={14} /> Notas emitidas</Group></Anchor>}
         title={<Group gap="sm">NF {nf.number}/{nf.series} <Status value={nf.status} /></Group>}
-        description={`Emitida em ${dateTime(nf.issuedAt)} · ${nf.operationLabel}${nf.orderCode ? ` · pedido ${nf.orderCode}` : ''}`}
+        description={`${nf.model === '65' ? 'NFC-e' : 'NF-e'} série ${nf.series} · emitida em ${dateTime(nf.issuedAt)} · ${nf.operationLabel}${nf.orderCode ? ` · pedido ${nf.orderCode}` : ''} · ${nf.companyLabel}${nf.taxRegime ? ` · ${REGIMES[nf.taxRegime] ?? nf.taxRegime}` : ''}`}
         actions={<>
           <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => window.print()}>Imprimir espelho</Button>
           {nf.status === 'emitida' && can(user, 'faturamento') && <Button variant="subtle" color="red" leftSection={<IconX size={16} />} onClick={() => setCanceling(true)}>Cancelar nota</Button>}
@@ -80,7 +80,7 @@ export default function SalesInvoiceDetail() {
         </Table.ScrollContainer>
       </Card>
 
-      {nf.taxes && <Card mb="md" maw={520} ml="auto"><Text fw={700} mb="xs">Totais e impostos</Text><TaxTotalsBlock totals={nf.taxes} /></Card>}
+      {nf.taxes && <Card mb="md" maw={520} ml="auto"><Text fw={700} mb="xs">Totais e impostos</Text><TaxTotalsBlock totals={nf.taxes} regime={nf.taxRegime} csts={nf.items.map((i) => i.taxes?.icms.cst).filter((c): c is string => !!c)} /></Card>}
 
       <Card>
         <Text fw={700} mb="sm">{nf.titles[0]?.docType === 'NDF' ? 'Débito do fornecedor (NDF, no contas a pagar)' : 'Parcelas (contas a receber)'}</Text>

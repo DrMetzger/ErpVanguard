@@ -12,11 +12,11 @@ import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction } from '../../lib/hooks'
 import type { Product } from '../../lib/types'
 import { KIND, type DocKind } from './SalesDocs'
-import { ItemTaxBadge, TaxTotalsBlock } from './TaxSummary'
-import type { ItemTaxes, SalesDoc, SalesInvoice, SalesOrderItem, TaxTotals } from './types'
+import { ItemTaxBadge, REGIMES, TaxTotalsBlock } from './TaxSummary'
+import type { ItemTaxes, Readiness, SalesDoc, SalesInvoice, SalesOrderItem, TaxTotals } from './types'
 
 interface Line { key: number; productId: string; sku: string; name: string; unit: string; stock: number; quantity: number; unitPrice: number; discountPct: number; cfop?: string | null; taxes?: ItemTaxes | null }
-interface Preview { totals: TaxTotals; warnings: string[]; items: { cfop: string | null; taxes: ItemTaxes; unitPrice: number }[] }
+interface Preview { totals: TaxTotals; warnings: string[]; regime?: string; items: { cfop: string | null; taxes: ItemTaxes; unitPrice: number }[] }
 let seq = 0
 const lineTotal = (l: Line) => Math.round(l.quantity * l.unitPrice * (1 - l.discountPct / 100) * 100) / 100
 const fromItem = (i: SalesOrderItem): Line => ({ key: ++seq, productId: i.productId, sku: i.sku, name: i.name, unit: i.unit, stock: i.stock, quantity: i.quantity, unitPrice: i.unitPrice, discountPct: i.discountPct, cfop: i.cfop, taxes: i.taxes })
@@ -42,6 +42,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
   const [losing, setLosing] = useState(false)
   const [reason, setReason] = useState('')
   const { busy, run } = useAction()
+  const [readiness, setReadiness] = useState<Readiness | null>(null)
 
   const apply = (o: SalesDoc) => {
     setDoc(o)
@@ -59,6 +60,14 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
   }, [terms, id, form.paymentTermId])
 
   const locked = !!doc && doc.status !== 'aberto'
+
+  // Confere os pré-requisitos (empresa, série) ao abrir o formulário, e não só ao salvar.
+  useEffect(() => {
+    if (locked || !loaded) return
+    let alive = true
+    api<Readiness>(`/sales/readiness${form.companyId ? `?companyId=${form.companyId}` : ''}`).then((r) => alive && setReadiness(r)).catch(() => undefined)
+    return () => { alive = false }
+  }, [form.companyId, locked, loaded])
   const body = () => ({
     customerId: form.customerId, paymentTermId: form.paymentTermId, priceTableId: form.priceTableId || undefined, companyId: form.companyId || undefined,
     operationTypeId: form.operationTypeId || undefined, validUntil: form.validUntil || undefined, freight: form.freight || 0, discount: form.discount || 0,
@@ -106,7 +115,10 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
     navigate(`/faturamento/notas/${nf.id}`)
   }, 'Pedido faturado')
   const warnings = [...new Set([...(doc?.warnings ?? []), ...(preview?.warnings ?? [])])]
-  const regime = { simples: 'Simples Nacional', simples_excesso: 'Simples (excesso)', mei: 'MEI', presumido: 'Lucro Presumido', real: 'Lucro Real' }[doc?.taxRegime ?? ''] 
+  const regimeKey = preview?.regime ?? doc?.taxRegime ?? readiness?.company?.regime ?? null
+  const regime = regimeKey ? REGIMES[regimeKey] : undefined
+  const blocked = !!readiness && !readiness.ready
+  const isAdmin = user.role === 'admin'
 
   return (
     <>
@@ -126,6 +138,21 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
         </>}
       />
 
+      {readiness && !readiness.complete && !locked && (
+        <Alert color={blocked ? 'red' : 'yellow'} icon={<IconAlertTriangle size={18} />} mb="md"
+          title={blocked ? 'Antes de preencher: falta cadastrar' : `Pendências para emitir a nota${kind === 'quote' ? ' (o orçamento pode ser salvo)' : ' (o pedido pode ser salvo)'}`}>
+          <Stack gap={4}>
+            {readiness.issues.map((i) => (
+              <Group key={i.key + i.message} gap="xs" wrap="nowrap">
+                <Text size="sm">{i.message}</Text>
+                {isAdmin
+                  ? <Anchor component={Link} to={i.link} size="sm" fw={600} style={{ whiteSpace: 'nowrap' }}>{i.link === '/empresas' ? 'Abrir Administração › Empresas' : i.link === '/parametros' ? 'Abrir Parâmetros' : 'Corrigir'}</Anchor>
+                  : <Text size="xs" c="dimmed">(peça ao administrador)</Text>}
+              </Group>
+            ))}
+          </Stack>
+        </Alert>
+      )}
       {doc?.status === 'perdido' && <Alert color="red" variant="light" mb="md" title="Orçamento perdido">{doc.lostReason}</Alert>}
       {warnings.length > 0 && !locked && (
         <Alert color="orange" icon={<IconAlertTriangle size={18} />} mb="md" title="Atenção">
@@ -189,10 +216,10 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
         </Card>
         <Card>
           <Group justify="space-between" mb="xs"><Text fw={700}>Totais e impostos</Text>{previewing && <Loader size="xs" />}</Group>
-          {preview ? <TaxTotalsBlock totals={preview.totals} /> : <Text size="sm" c="dimmed">Itens: {money(itemsTotal)}. Escolha o cliente para calcular os impostos.</Text>}
+          {preview ? <TaxTotalsBlock totals={preview.totals} regime={regimeKey} csts={lines.map((l) => l.taxes?.icms.cst).filter((c): c is string => !!c)} /> : <Text size="sm" c="dimmed">Itens: {money(itemsTotal)}. Escolha o cliente para calcular os impostos.</Text>}
           {!locked && (
             <Group justify="flex-end" mt="md">
-              <Button onClick={save} loading={busy} disabled={!dirty || !form.customerId || !form.paymentTermId || !lines.length}>{doc ? 'Salvar alterações' : kind === 'quote' ? 'Salvar orçamento' : 'Salvar pedido'}</Button>
+              <Button onClick={save} loading={busy} disabled={blocked || !dirty || !form.customerId || !form.paymentTermId || !lines.length}>{doc ? 'Salvar alterações' : kind === 'quote' ? 'Salvar orçamento' : 'Salvar pedido'}</Button>
             </Group>
           )}
         </Card>
