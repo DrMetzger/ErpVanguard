@@ -7,6 +7,7 @@ import { addDays, today } from '../finance/finance.logic'
 import { ParametersService } from '../params/parameters.service'
 import type { User } from '../users/user.entity'
 import { SalesDocDto, SalesDocsService } from './sales-docs.service'
+import { SalesEmailService, SendEmailDto } from './sales-email.service'
 
 class ListQuery {
   @IsOptional() @IsIn(['aberto', 'ganho', 'perdido', 'todos']) status?: string
@@ -19,7 +20,7 @@ class LoseDto {
 // Orçamentos: negociação com o cliente. Ganho gera o pedido de venda; perdido guarda o motivo.
 @Controller('sales-quotes')
 export class QuotesController {
-  constructor(private readonly db: DataSource, private readonly docs: SalesDocsService, private readonly params: ParametersService) {}
+  constructor(private readonly db: DataSource, private readonly docs: SalesDocsService, private readonly params: ParametersService, private readonly email: SalesEmailService) {}
 
   @Get()
   list(@CurrentUser() me: User, @Query() q: ListQuery) {
@@ -98,5 +99,19 @@ export class QuotesController {
       await tx.query(`UPDATE sales_quotes SET status = 'aberto', lost_reason = NULL, closed_at = NULL, updated_at = now() WHERE id = $1`, [id])
       return this.docs.load(tx, 'quote', id, me)
     })
+  }
+
+  // E-mail ao cliente: rascunho (modelo + e-mail do cadastro) e envio com histórico.
+  @Get(':id/email')
+  emailDraft(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
+    this.docs.requireSales(me)
+    return this.email.draft('quote', id, me)
+  }
+
+  @Post(':id/email')
+  @HttpCode(200)
+  sendEmail(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendEmailDto) {
+    this.docs.requireSales(me)
+    return this.email.send('quote', id, me, dto)
   }
 }

@@ -6,7 +6,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "test": "npm run build && node test/gemini.test.mjs && node test/taxes.test.mjs",
-    "test:compras": "node test/purchasing-flow.mjs"
+    "test:compras": "node test/purchasing-flow.mjs",
+    "test:email": "node test/email-flow.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.0",
@@ -20,6 +21,7 @@
     "class-validator": "^0.15.1",
     "fast-xml-parser": "^5.11.1",
     "node-forge": "^1.4.0",
+    "nodemailer": "^10.0.12",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
@@ -30,6 +32,7 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
     "@types/node-forge": "^1.3.14",
+    "smtp-server": "^3.19.15",
     "typescript": "^5.9.0"
   }
 }
