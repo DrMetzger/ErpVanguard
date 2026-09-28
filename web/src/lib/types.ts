@@ -27,6 +27,7 @@ export interface Product {
   groupLabel?: string | null
   origin: number
   active: boolean
+  thumb?: string | null
   custom?: Record<string, unknown>
 }
 

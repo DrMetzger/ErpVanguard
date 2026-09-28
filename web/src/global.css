@@ -39,3 +39,9 @@ a { color: inherit; }
 .chart-card .recharts-cartesian-grid line { stroke: var(--mantine-color-default-border); }
 @media (min-width: 75em) { .bi-wide { grid-column: span 2; } }
 @media (min-width: 62em) { .customize-main { grid-column: span 3; } } @media (max-width: 62em) { .customize-main { grid-column: auto !important; } }
+/* Fotos do produto */
+.photo-tile { border-radius: var(--mantine-radius-md); overflow: hidden; }
+.photo-tile.main { box-shadow: 0 0 0 2px var(--mantine-primary-color-filled); }
+.photo-tile .photo-actions { opacity: 0; transition: opacity 120ms ease; }
+.photo-tile:hover .photo-actions, .photo-tile:focus-within .photo-actions { opacity: 1; }
+@media (hover: none) { .photo-tile .photo-actions { opacity: 1; } }

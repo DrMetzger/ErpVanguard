@@ -27,7 +27,7 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
 Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal) · **Compras** · **Estoque** ·
 **Faturamento** · **Financeiro** · **BI Avançado** — e, para administradores, **Empresas**, **Usuários**, **Personalizar cadastros**, **Parâmetros** e **Configurações**.
 
-- **Cadastros › Produtos:** produtos (tipo SPED, grupo, unidade, NCM, origem), grupos, tipos, unidades, NCM
+- **Cadastros › Produtos:** produtos com até 6 fotos (a principal aparece na lista; reduzidas no navegador antes de subir), tipo SPED, grupo, unidade, NCM, origem, grupos, tipos, unidades, NCM
   e tabelas de preço.
 - **Cadastros › Clientes e fornecedores:** fornecedores, clientes e amarração produto × fornecedor.
 - **Cadastros › Fiscal:** CFOP, tipos de operação, TES (tipos de entrada e saída: CFOP, estoque, financeiro,

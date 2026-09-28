@@ -205,6 +205,23 @@ ok('tipos novos (memo, várias opções, moeda) e máscara de placa; editar camp
 for (const r of ['customers', 'products']) for (const f of (await call(admin, 'GET', `/custom-fields/${r}`)).fields) await call(admin, 'DELETE', `/custom-fields/${r}/${f.id}`, undefined, 204)
 ok('campos personalizados: só admin cria; tipo e opções validados; obrigatório cobrado; formulário esconde/renomeia/reordena (obrigatório não esconde)')
 
+// Fotos do produto
+const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+const pp = await call(tCad, 'POST', '/products', { sku: 'PH-' + run, name: 'Produto com foto', unit: 'UN' })
+await call(tSol, 'POST', `/products/${pp.id}/photos`, { image: tiny, thumb: tiny }, 403)
+await call(tCad, 'POST', `/products/${pp.id}/photos`, { image: 'data:image/gif;base64,R0lGOD==', thumb: tiny }, 400)
+let photos
+for (let i = 0; i < 6; i++) photos = await call(tCad, 'POST', `/products/${pp.id}/photos`, { image: tiny, thumb: tiny })
+await call(tCad, 'POST', `/products/${pp.id}/photos`, { image: tiny, thumb: tiny }, 400)
+assert.equal(photos.length, 6); assert.ok(photos[0].url.startsWith('data:image/png;base64,'))
+photos = await call(tCad, 'POST', `/products/${pp.id}/photos/${photos[3].id}/main`)
+assert.equal(photos[0].position, 0)
+photos = await call(tCad, 'DELETE', `/products/${pp.id}/photos/${photos[0].id}`)
+assert.equal(photos.length, 5); assert.deepEqual(photos.map((x) => x.position), [0, 1, 2, 3, 4])
+assert.equal((await call(tCad, 'GET', `/products?q=PH-${run}`))[0].thumb, tiny)
+await call(tCad, 'DELETE', `/products/${pp.id}`, undefined, 204)
+ok('fotos do produto: até 6, formato conferido, trocar principal, excluir reordena; miniatura na lista')
+
 // Configurações
 await call(tCad, 'GET', '/settings', undefined, 403)
 const s1 = await call(admin, 'PUT', '/settings/gemini', { apiKey: 'AIzaChaveDeTesteQueNaoExiste1234', model: 'gemini-3.8-flash', fallbackModels: ['gemini-3.5-flash'] })

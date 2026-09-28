@@ -45,6 +45,10 @@ export class Product {
   @Column({ type: 'smallint', default: 0 })
   origin: number
 
+  // Miniatura da foto principal (data URL pequena) para as listas
+  @Column({ type: 'text', nullable: true })
+  thumb: string | null
+
   // Campos personalizados (Administração › Personalizar cadastros)
   @Column({ type: 'jsonb', default: () => "'{}'" })
   custom: Record<string, unknown>

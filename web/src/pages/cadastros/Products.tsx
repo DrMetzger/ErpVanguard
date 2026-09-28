@@ -1,6 +1,6 @@
-import { ActionIcon, Autocomplete, Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
+import { ActionIcon, Autocomplete, Avatar, Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
-import { IconEdit, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react'
+import { IconEdit, IconPhoto, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { BrNumber, Money } from '../../components/inputs'
 import { Empty, ErrorText, Loading, PageHeader } from '../../components/ui'
@@ -11,6 +11,7 @@ import { useAction, useApi } from '../../lib/hooks'
 import type { Product } from '../../lib/types'
 import { CustomFieldsInputs, customBody, customDisplay } from '../../components/CustomFields'
 import { layoutHelpers, useCustomization, type Customization } from '../../lib/custom'
+import { ProductPhotos, uploadPending, type PendingPhoto } from '../../components/ProductPhotos'
 
 const ORIGINS = [
   { value: '0', label: '0 · Nacional' }, { value: '1', label: '1 · Estrangeira (importação direta)' }, { value: '2', label: '2 · Estrangeira (mercado interno)' },
@@ -38,14 +39,15 @@ export default function Products() {
       <ErrorText error={error} />
       <Card p={0}>
         {loading && !data ? <Loading /> : (
-          <Table.ScrollContainer minWidth={760}>
+          <Table.ScrollContainer minWidth={820}>
             <Table>
               <Table.Thead>
-                <Table.Tr><Table.Th>Código</Table.Th><Table.Th>Produto</Table.Th><Table.Th>Grupo</Table.Th><Table.Th>Un.</Table.Th><Table.Th ta="right">Custo</Table.Th><Table.Th ta="right">Venda</Table.Th><Table.Th ta="right">Estoque</Table.Th>{cols.map((f) => <Table.Th key={f.key}>{custom!.layout.labels[`custom.${f.key}`] || f.label}</Table.Th>)}<Table.Th w={90} /></Table.Tr>
+                <Table.Tr><Table.Th w={56} /><Table.Th>Código</Table.Th><Table.Th>Produto</Table.Th><Table.Th>Grupo</Table.Th><Table.Th>Un.</Table.Th><Table.Th ta="right">Custo</Table.Th><Table.Th ta="right">Venda</Table.Th><Table.Th ta="right">Estoque</Table.Th>{cols.map((f) => <Table.Th key={f.key}>{custom!.layout.labels[`custom.${f.key}`] || f.label}</Table.Th>)}<Table.Th w={90} /></Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {data?.map((p) => (
                   <Table.Tr key={p.id} opacity={p.active ? 1 : 0.5}>
+                    <Table.Td><Avatar src={p.thumb} radius="md" size={40} alt="" style={{ cursor: 'pointer' }} onClick={() => setEditing(p)}><IconPhoto size={18} stroke={1.5} /></Avatar></Table.Td>
                     <Table.Td fw={600}>{p.sku}</Table.Td>
                     <Table.Td>{p.name}{p.typeLabel && <Text size="xs" c="dimmed">{p.typeLabel}</Text>}</Table.Td>
                     <Table.Td>{p.groupLabel ?? <Text c="dimmed" span>—</Text>}</Table.Td>
@@ -76,6 +78,8 @@ export default function Products() {
 function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<Product>; custom: Customization | null; onClose: () => void; onSaved: () => void }) {
   const L = layoutHelpers(custom?.layout)
   const [extra, setExtra] = useState<Record<string, unknown>>(() => ({ ...(product.custom ?? {}) }))
+  const [pending, setPending] = useState<PendingPhoto[]>([])
+  const [photosChanged, setPhotosChanged] = useState(false)
   const isNew = !product.id
   const [form, setForm] = useState({
     sku: product.sku ?? '', name: product.name ?? '', barcode: product.barcode ?? '', ncm: product.ncm ?? '', unit: product.unit ?? 'UN',
@@ -100,11 +104,15 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
       ...(isNew ? {} : { active: form.active }),
       ...(custom?.fields.length ? { custom: customBody(custom.fields, extra) } : {}),
     }
-    run(() => api(isNew ? '/products' : `/products/${product.id}`, { method: isNew ? 'POST' : 'PATCH', body }).then(onSaved), 'Produto salvo')
+    run(async () => {
+      const saved = await api<Product>(isNew ? '/products' : `/products/${product.id}`, { method: isNew ? 'POST' : 'PATCH', body })
+      if (isNew && pending.length) await uploadPending(saved.id, pending)
+      onSaved()
+    }, 'Produto salvo')
   }
 
   return (
-    <Modal opened onClose={onClose} title={isNew ? 'Novo produto' : 'Editar produto'} size="lg">
+    <Modal opened onClose={photosChanged ? onSaved : onClose} title={isNew ? 'Novo produto' : 'Editar produto'} size="xl" closeOnEscape={false}>
       <Stack component="form" onSubmit={submit}>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <TextInput label={L.label('sku', 'Código (SKU)')} style={{ order: L.order('sku') }} required data-autofocus value={form.sku} onChange={(e) => set('sku', e.currentTarget.value)} />
@@ -121,9 +129,10 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
           <BrNumber label="Estoque atual" decimalScale={4} allowNegative value={form.stock} onChange={(v) => set('stock', v)} />
           {L.show('minStock') && <BrNumber label={L.label('minStock', 'Estoque mínimo')} style={{ order: L.order('minStock') }} decimalScale={4} value={form.minStock} onChange={(v) => set('minStock', v)} />}
         </SimpleGrid>
+        <ProductPhotos productId={product.id} pending={pending} onPending={setPending} onChanged={() => setPhotosChanged(true)} />
         <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         {!isNew && <Switch label="Produto ativo" checked={form.active} onChange={(e) => set('active', e.currentTarget.checked)} />}
-        <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
+        <Group justify="flex-end"><Button variant="default" onClick={photosChanged ? onSaved : onClose}>{photosChanged ? 'Fechar' : 'Cancelar'}</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
       </Stack>
     </Modal>
   )
