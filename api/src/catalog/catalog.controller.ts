@@ -1,4 +1,5 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Logger, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common'
+import type { Response } from 'express'
 import { DataSource } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { isAdmin } from '../common/access'
@@ -7,7 +8,10 @@ import { isValidDocument } from '../purchasing/documents'
 import { ieValida, municipioPorCodigo, municipioPorNome } from '../common/br'
 import type { User } from '../users/user.entity'
 import { CUSTOMIZABLE, CustomFieldsService } from '../custom/custom-fields.service'
-import { REF_TARGETS, resource, RESOURCES, UFS, type FieldDef, type ResourceDef } from './resources'
+import { PRODUCT_SHEET, REF_TARGETS, resource, RESOURCES, UFS, type FieldDef, type ResourceDef } from './resources'
+import { buildWorkbook, optionLabel, readWorkbook, sheetBool, sheetDate, sheetNumber, sheetOption, type SheetColumn } from '../common/sheet'
+import { ensureNcm } from './ncm'
+import { SettingsService } from '../settings/settings.service'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -32,7 +36,8 @@ const RULES: Record<string, (row: Record<string, any>) => string | null> = {
 
 @Controller('catalog')
 export class CatalogController {
-  constructor(private readonly db: DataSource, private readonly custom: CustomFieldsService) {}
+  private readonly log = new Logger('Planilha')
+  constructor(private readonly db: DataSource, private readonly custom: CustomFieldsService, private readonly settings: SettingsService) {}
 
   // Descrição das telas (campos, rótulos, tipos) para o front montar formulários e tabelas.
   @Get('meta')
@@ -116,6 +121,223 @@ export class CatalogController {
     } catch (error: any) {
       if (error?.code === '23503') throw new ConflictException(`Não dá para excluir: este(a) ${def.singular} está em uso. Desative em vez de excluir.`)
       throw error
+    }
+  }
+
+  // ── Importação e exportação por planilha (Excel) ──────────────────────────────
+
+  // Modelo em branco com instruções e listas de opções.
+  @Get(':name/sheet/template')
+  async template(@CurrentUser() me: User, @Param('name') name: string, @Res() res: Response) {
+    const def = this.sheetDef(name)
+    this.canWrite(me, def)
+    const { columns } = await this.sheetColumns(def)
+    this.sendXlsx(res, `modelo-${def.name}.xlsx`, await buildWorkbook(def.title, columns))
+  }
+
+  // Todos os registros no mesmo formato do modelo (dá para editar e importar de volta).
+  @Get(':name/sheet/export')
+  async export(@CurrentUser() me: User, @Param('name') name: string, @Res() res: Response) {
+    const def = this.sheetDef(name)
+    if (def.name === 'companies' && !isAdmin(me)) throw new ForbiddenException('Só o administrador exporta empresas')
+    const { columns, customDefs } = await this.sheetColumns(def)
+    const rows = (await this.db.query(`SELECT ${this.select(def)} FROM ${def.table} t ORDER BY ${def.order.split(',').map((o) => `t.${o.trim()}`).join(', ')} LIMIT 50000`)).map((r: any) => this.out(def, r))
+    const fmt = (f: FieldDef, row: any) => {
+      const v = row[f.key]
+      if (v === null || v === undefined || v === '') return null
+      switch (f.type) {
+        case 'bool': return v ? 'Sim' : 'Não'
+        case 'enum': { const o = f.options!.find((x) => x.value === String(v)); return o ? optionLabel(o) : String(v) }
+        case 'ref': return row[`${f.key}Label`] ?? null
+        case 'date': return String(v).split('-').reverse().join('/')
+        case 'int': case 'decimal': return Number(v)
+        default: return String(v)
+      }
+    }
+    const data = rows.map((row: any) => columns.map((c) => {
+      if (c.key.startsWith('custom.')) {
+        const v = row.custom?.[c.key.slice(7)]
+        const d = customDefs.find((x) => `custom.${x.key}` === c.key)
+        if (v === undefined || v === null) return null
+        if (Array.isArray(v)) return v.join('; ')
+        if (d?.type === 'bool') return v ? 'Sim' : 'Não'
+        return v
+      }
+      return fmt(def.fields.find((f) => f.key === c.key)!, row)
+    }))
+    const stamp = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+    this.sendXlsx(res, `${def.name}-${stamp}.xlsx`, await buildWorkbook(def.title, columns, data))
+  }
+
+  // Confere (commit=false) ou grava (commit=true) a planilha. Grava tudo ou nada: com erro, nada é gravado.
+  @Post(':name/sheet/import')
+  async import(@CurrentUser() me: User, @Param('name') name: string, @Body() body: { file?: string; commit?: boolean }) {
+    const def = this.sheetDef(name)
+    this.canWrite(me, def)
+    if (typeof body?.file !== 'string' || !body.file) throw new BadRequestException('Envie a planilha')
+    const buffer = Buffer.from(body.file, 'base64')
+    if (buffer.length > 3.5 * 1024 * 1024) throw new BadRequestException('Planilha grande demais (máx. 3,5 MB): divida em partes')
+    const { columns, customDefs, refs } = await this.sheetColumns(def)
+    const lines = await readWorkbook(buffer, columns)
+    if (!lines.length) throw new BadRequestException('A planilha não tem linhas preenchidas (comece na linha 3 da aba Dados)')
+    const keyFields = (def.importKey ?? [['code'], ['document'], ['cnpj'], ['sku'], ['uf']].find((k) => def.fields.some((f) => f.key === k[0])) ?? [])
+      .map((k) => def.fields.find((f) => f.key === k)!).filter(Boolean)
+    const results: { line: number; action: 'incluir' | 'atualizar'; label: string; errors: string[] }[] = []
+    const runner = this.db.createQueryRunner()
+    await runner.connect()
+    await runner.startTransaction()
+    const tx = runner.manager
+    const seen = new Map<string, number>()
+    try {
+      for (const { line, values } of lines) {
+        const errors: string[] = []
+        const input: Record<string, unknown> = {}
+        const custom: Record<string, unknown> = {}
+        for (const [key, raw] of Object.entries(values)) {
+          try {
+            if (key.startsWith('custom.')) {
+              const d = customDefs.find((x) => x.key === key.slice(7))!
+              custom[d.key] = d.type === 'multiselect' ? String(raw).split(/[;,]/).map((x) => x.trim()).filter(Boolean)
+                : d.type === 'bool' ? sheetBool(raw) : d.type === 'date' ? sheetDate(raw) : ['number', 'integer', 'currency'].includes(d.type) ? sheetNumber(raw) : String(raw)
+              continue
+            }
+            const f = def.fields.find((x) => x.key === key)!
+            input[key] = this.cellToValue(f, raw, refs)
+          } catch (error: any) {
+            errors.push(`${columns.find((c) => c.key === key)?.label ?? key}: ${error.message}`)
+          }
+        }
+        // Já existe? Procura pelos campos-chave (código, documento, SKU…).
+        let current: Record<string, any> | undefined
+        const keyValues = keyFields.map((f) => { try { return input[f.key] === undefined ? undefined : this.convert(f, input[f.key]) } catch { return undefined } })
+        if (keyFields.length && keyValues.every((v) => v !== undefined && v !== null)) {
+          const dup = keyValues.join('|')
+          if (seen.has(dup)) errors.push(`repetido na planilha (mesmo ${keyFields.map((f) => f.label).join(' + ')} da linha ${seen.get(dup)})`)
+          seen.set(dup, line)
+          current = await one(tx, `SELECT * FROM ${def.table} WHERE ${keyFields.map((f, i) => `${f.column} = $${i + 1}`).join(' AND ')}`, keyValues)
+        }
+        const label = String(input.name ?? input.description ?? input[keyFields[0]?.key ?? ''] ?? `linha ${line}`)
+        // Atualização: só confere e grava o que mudou (dado antigo igual ao da planilha não trava a importação).
+        if (current) {
+          const same = (a: unknown, b: unknown) => (a instanceof Date ? a.toISOString().slice(0, 10) : a === null || a === undefined ? null : String(a)) === (b === null || b === undefined ? null : String(b))
+          for (const f of def.fields) {
+            if (!(f.key in input) || keyFields.includes(f)) continue
+            try { if (same(current[f.column], this.convert(f, input[f.key]))) delete input[f.key] } catch { /* o erro aparece na conferência */ }
+          }
+          for (const [k, v] of Object.entries(custom)) if (JSON.stringify(current.custom?.[k]) === JSON.stringify(v)) delete custom[k]
+        }
+        if (!errors.length) {
+          await runner.query('SAVEPOINT linha')
+          try {
+            const cols = this.values(def, input, !current, current)
+            if (CUSTOMIZABLE[def.name] && (customDefs.length || !current)) cols.custom = JSON.stringify(await this.custom.validate(def.name, custom, current?.custom ?? {}, !current, tx))
+            const names = Object.keys(cols)
+            if (current) {
+              if (names.length) await tx.query(`UPDATE ${def.table} SET ${names.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`, [current.id, ...Object.values(cols)])
+            } else {
+              await tx.query(`INSERT INTO ${def.table} (${names.join(', ')}) VALUES (${names.map((_, i) => `$${i + 1}`).join(', ')})`, Object.values(cols))
+            }
+            await runner.query('RELEASE SAVEPOINT linha')
+          } catch (error: any) {
+            await runner.query('ROLLBACK TO SAVEPOINT linha')
+            const custom = error?.constraint && def.constraints?.[error.constraint]
+            errors.push(custom || (error?.code === '23505' ? 'já existe um registro com este código' : error?.code === '23503' ? 'registro relacionado não encontrado' : error?.response?.message ?? error.message))
+          }
+        }
+        results.push({ line, action: current ? 'atualizar' : 'incluir', label, errors })
+      }
+      const failed = results.filter((r) => r.errors.length)
+      if (body.commit && !failed.length) {
+        await runner.commitTransaction()
+        this.log.log(`${def.name}: ${results.length} linha(s) importada(s) por ${me.email}`)
+        if (def.name === 'products') for (const ncm of new Set(lines.map((l) => String(l.values.ncm ?? '').replace(/\D/g, '')).filter((n) => n.length === 8))) void ensureNcm(this.db, ncm, () => this.settings.gemini())
+      } else {
+        await runner.rollbackTransaction()
+      }
+      return {
+        committed: !!body.commit && !failed.length, total: results.length,
+        create: results.filter((r) => r.action === 'incluir').length, update: results.filter((r) => r.action === 'atualizar').length,
+        errors: failed.length, rows: results.slice(0, 2000),
+      }
+    } catch (error) {
+      if (runner.isTransactionActive) await runner.rollbackTransaction()
+      throw error
+    } finally {
+      await runner.release()
+    }
+  }
+
+  private sheetDef(name: string) {
+    return name === 'products' ? PRODUCT_SHEET : this.def(name)
+  }
+
+  private sendXlsx(res: Response, file: string, buffer: Buffer) {
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${file}"`)
+    res.send(buffer)
+  }
+
+  // Colunas da planilha: campos do cadastro (menos os internos) + campos personalizados.
+  private async sheetColumns(def: ResourceDef) {
+    const TYPE: Record<string, string> = { text: 'Texto', int: 'Número inteiro', decimal: 'Número', bool: 'Sim/Não', date: 'Data', enum: 'Lista', ref: 'Lista', uf: 'UF',
+      document: 'CPF/CNPJ', phone: 'Telefone', zip: 'CEP', city: 'Cidade', ie: 'Inscrição estadual' }
+    const refs: Record<string, { byLabel: Map<string, string>; byCode: Map<string, string> }> = {}
+    const columns: SheetColumn[] = []
+    for (const f of def.fields.filter((x) => !x.hidden && x.type !== 'json')) {
+      const col: SheetColumn = { key: f.key, label: f.label, required: f.required && f.default === undefined, type: TYPE[f.type] ?? f.type }
+      const help: string[] = []
+      if (f.help) help.push(f.help)
+      if (f.max && f.type === 'text') help.push(`até ${f.max} caracteres`)
+      if (f.patternMessage) help.push(f.patternMessage)
+      if (f.type === 'enum') col.options = f.options!.map(optionLabel)
+      if (f.type === 'uf') col.options = UFS
+      if (f.type === 'bool') { col.options = ['Sim', 'Não']; if (f.default !== undefined) help.push(`em branco = ${f.default ? 'Sim' : 'Não'}`) }
+      if (f.type === 'date') { help.push('dd/mm/aaaa'); col.example = '31/12/2026' }
+      if (f.type === 'document') { help.push('só números ou com pontuação'); col.example = '11.222.333/0001-81' }
+      if (f.type === 'phone') { help.push('DDD + número'); col.example = '(17) 99999-0000' }
+      if (f.type === 'zip') col.example = '15015-100'
+      if (f.type === 'city') help.push('nome oficial do município (IBGE); a UF precisa estar preenchida')
+      if (f.type === 'ie') help.push('só números ou ISENTO; conferida pela regra da UF')
+      if (f.type === 'decimal') { help.push('use vírgula para decimais'); col.example = '1.234,56' }
+      if (f.type === 'ref') {
+        const target = refTarget(f.ref!)!
+        const code = (REF_TARGETS[f.ref!]?.search ?? resource(f.ref!)?.search ?? ['id'])[0]
+        const list: { id: string; label: string; code: string }[] = await this.db.query(`SELECT id, ${target.labelExpr} AS label, ${code}::text AS code FROM ${target.table} ORDER BY 2 LIMIT 5000`)
+        refs[f.key] = { byLabel: new Map(list.map((r) => [r.label.toLowerCase(), r.id])), byCode: new Map(list.map((r) => [String(r.code).toLowerCase(), r.id])) }
+        if (list.length <= 1000) col.options = list.map((r) => r.label)
+        help.push('escolha da lista (ou digite o código)')
+      }
+      if (f.default !== undefined && f.type !== 'bool') help.push(`em branco = ${f.type === 'enum' ? optionLabel(f.options!.find((o) => o.value === String(f.default))!) : f.default}`)
+      col.help = help.join('; ')
+      columns.push(col)
+    }
+    const customDefs = CUSTOMIZABLE[def.name] ? await this.custom.definitions(def.name) : []
+    for (const d of customDefs) {
+      columns.push({ key: `custom.${d.key}`, label: d.label, required: d.required, type: `Personalizado (${d.type})`,
+        options: ['select', 'radio'].includes(d.type) ? d.options : d.type === 'bool' ? ['Sim', 'Não'] : undefined,
+        help: [d.help, d.type === 'multiselect' ? `separe por ; (opções: ${d.options.join(', ')})` : '', d.type === 'date' ? 'dd/mm/aaaa' : ''].filter(Boolean).join('; ') })
+    }
+    return { columns, customDefs, refs }
+  }
+
+  // Célula da planilha → valor aceito pelo cadastro (o resto da conferência é a mesma da tela).
+  private cellToValue(f: FieldDef, raw: unknown, refs: Record<string, { byLabel: Map<string, string>; byCode: Map<string, string> }>): unknown {
+    const text = raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).trim()
+    switch (f.type) {
+      case 'bool': return sheetBool(raw)
+      case 'int': case 'decimal': return sheetNumber(raw)
+      case 'date': return sheetDate(raw)
+      case 'enum': return sheetOption(raw, f.options!)
+      case 'uf': return text.toUpperCase()
+      case 'ref': {
+        const r = refs[f.key]!
+        const id = r.byLabel.get(text.toLowerCase()) ?? r.byCode.get(text.split(' · ')[0]!.trim().toLowerCase())
+        if (!id) throw new Error(`"${text}" não encontrado no cadastro`)
+        return id
+      }
+      case 'document': { const d = digits(text); return d.length > 11 ? d.padStart(14, '0') : d.padStart(11, '0') }
+      case 'zip': return digits(text).padStart(8, '0')
+      default: return typeof raw === 'number' ? String(raw) : text
     }
   }
 

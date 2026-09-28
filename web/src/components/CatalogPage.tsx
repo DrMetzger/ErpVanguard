@@ -12,6 +12,7 @@ import type { CatalogRow, FieldDef, ResourceMeta } from '../lib/types'
 import { applyLayout, useCustomization, type Customization } from '../lib/custom'
 import { customBody, customDisplay, CustomFieldsInputs } from './CustomFields'
 import { BrNumber } from './inputs'
+import { SheetMenu } from './SheetMenu'
 import { CitySelect, DocumentInput, IeInput, PhoneInput, ReceitaPanel, ZipInput } from './BrFields'
 import { applyMask } from '../lib/mask'
 import { Empty, Loading } from './ui'
@@ -60,7 +61,10 @@ export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (
           <Text fw={700} size="lg">{meta.title}</Text>
           <Text size="sm" c="dimmed">{meta.description}</Text>
         </div>
-        {canWrite && <Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo(a) {meta.singular}</Button>}
+        <Group gap="xs">
+          <SheetMenu name={name} title={meta.title} canWrite={canWrite} onImported={() => { clearOptions(); reload() }} />
+          {canWrite && <Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo(a) {meta.singular}</Button>}
+        </Group>
       </Group>
       <TextInput placeholder="Buscar…" leftSection={<IconSearch size={16} />} value={query} onChange={(e) => setQuery(e.currentTarget.value)} maw={380} mb="md" aria-label={`Buscar ${meta.title}`} />
       <Card p={0}>

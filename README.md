@@ -27,6 +27,7 @@ fazendo proxy de `/api` e emitindo o certificado HTTPS).
 Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal) · **Compras** · **Estoque** ·
 **Faturamento** · **Financeiro** · **BI Avançado** — e, para administradores, **Empresas**, **Usuários**, **Personalizar cadastros**, **Parâmetros** e **Configurações**.
 
+- **Planilhas (todos os cadastros):** botão Planilha em cada cadastro (e em Produtos) com modelo Excel gerado pelo sistema (obrigatórios marcados, listas suspensas e aba de instruções), importação com conferência linha a linha antes de gravar (grava tudo ou nada; mesmo código/documento atualiza) e exportação de todos os registros no mesmo formato.
 - **Cadastros › Produtos:** produtos com até 6 fotos (a principal aparece na lista; reduzidas no navegador antes de subir) e até 3 vídeos (link do YouTube/Vimeo ou arquivo MP4/WebM/MOV de até 100 MB, guardado no volume `media-data` e tocado por link assinado), tipo SPED, grupo, unidade, NCM, origem, grupos, tipos, unidades, NCM
   e tabelas de preço.
 - **Cadastros › Clientes e fornecedores:** fornecedores, clientes e amarração produto × fornecedor.
@@ -116,7 +117,7 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`Nome <email>`).
 
 Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
-`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs`, `node test/cost-center-flow.mjs`, `node test/ncm-numbering-flow.mjs`, `node test/email-flow.mjs` (este sobe um SMTP local na porta 2599) (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs`, `node test/cost-center-flow.mjs`, `node test/ncm-numbering-flow.mjs`, `node test/sheet-flow.mjs`, `node test/email-flow.mjs` (este sobe um SMTP local na porta 2599) (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD`).
 
 ### Desenvolvimento local

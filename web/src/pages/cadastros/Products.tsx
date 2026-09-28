@@ -1,3 +1,5 @@
+import { SheetMenu } from '../../components/SheetMenu'
+import { useUser } from '../../lib/auth'
 import { ActionIcon, Autocomplete, Avatar, Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { IconEdit, IconPhoto, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react'
@@ -21,6 +23,7 @@ const ORIGINS = [
 ]
 
 export default function Products() {
+  const user = useUser()
   const [query, setQuery] = useState('')
   const [q] = useDebouncedValue(query.trim(), 250)
   const { data, error, loading, reload } = useApi<Product[]>(`/products${q ? `?q=${encodeURIComponent(q)}` : ''}`)
@@ -35,7 +38,7 @@ export default function Products() {
 
   return (
     <>
-      <PageHeader title={<Text fw={700} size="lg">Produtos</Text>} description="Cadastro de produtos: código, tipo, grupo, unidade, NCM e preços." actions={<Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo produto</Button>} />
+      <PageHeader title={<Text fw={700} size="lg">Produtos</Text>} description="Cadastro de produtos: código, tipo, grupo, unidade, NCM e preços." actions={<Group gap="xs"><SheetMenu name="products" title="Produtos" canWrite={user.role === 'admin' || user.permissions.includes('cadastro')} onImported={reload} /><Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo produto</Button></Group>} />
       <TextInput placeholder="Buscar por nome ou código" leftSection={<IconSearch size={16} />} value={query} onChange={(e) => setQuery(e.currentTarget.value)} maw={420} mb="md" />
       <ErrorText error={error} />
       <Card p={0}>

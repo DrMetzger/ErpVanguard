@@ -36,6 +36,8 @@ export interface ResourceDef {
   fields: FieldDef[]
   // Mensagem para violações de restrições específicas do banco.
   constraints?: Record<string, string>
+  // Campos que identificam o registro na importação por planilha (atualiza em vez de duplicar).
+  importKey?: string[]
 }
 
 export const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO']
@@ -187,7 +189,7 @@ export const RESOURCES: ResourceDef[] = [
     ],
   },
   {
-    name: 'supplier-products', module: 'cadastros', title: 'Produto × Fornecedor', singular: 'amarração', description: 'Código do produto no fornecedor. O sistema também aprende sozinho ao lançar notas.',
+    name: 'supplier-products', importKey: ['supplierId', 'supplierCode'], module: 'cadastros', title: 'Produto × Fornecedor', singular: 'amarração', description: 'Código do produto no fornecedor. O sistema também aprende sozinho ao lançar notas.',
     table: 'supplier_products', labelExpr: 'supplier_code', search: ['supplier_code'], order: 'created_at DESC', write: ['cadastro', 'comprador'],
     fields: [
       { key: 'supplierId', column: 'supplier_id', label: 'Fornecedor', type: 'ref', ref: 'suppliers', required: true, list: true, span: 2 },
@@ -356,3 +358,28 @@ export const RESOURCES: ResourceDef[] = [
 ]
 
 export const resource = (name: string) => RESOURCES.find((r) => r.name === name)
+
+// Produtos têm tela e API próprias; esta descrição serve só para a importação/exportação por planilha.
+export const PRODUCT_ORIGINS = [
+  '0 · Nacional', '1 · Estrangeira (importação direta)', '2 · Estrangeira (mercado interno)', '3 · Nacional, importado > 40%', '4 · Nacional (processos básicos)',
+  '5 · Nacional, importado ≤ 40%', '6 · Estrangeira direta, sem similar', '7 · Estrangeira interna, sem similar', '8 · Nacional, importado > 70%',
+].map((l) => ({ value: l.split(' · ')[0]!, label: l.split(' · ')[1]! }))
+export const PRODUCT_SHEET: ResourceDef = {
+  name: 'products', module: 'cadastros', title: 'Produtos', singular: 'produto', description: '', table: 'products', labelExpr: "sku || ' · ' || name",
+  search: ['sku', 'name'], order: 'name', write: ['cadastro'], importKey: ['sku'], constraints: { products_sku_key: 'Já existe um produto com este código (SKU)' },
+  fields: [
+    { key: 'sku', column: 'sku', label: 'Código (SKU)', type: 'text', required: true, max: 60 },
+    { key: 'name', column: 'name', label: 'Descrição', type: 'text', required: true, max: 250 },
+    { key: 'barcode', column: 'barcode', label: 'Código de barras (EAN)', type: 'text', max: 20, pattern: '^\\d{8,14}$', patternMessage: 'EAN com 8 a 14 dígitos' },
+    { key: 'ncm', column: 'ncm', label: 'NCM', type: 'text', pattern: '^\\d{8}$', patternMessage: 'NCM com 8 dígitos', help: 'NCM novo entra no cadastro de NCM sozinho' },
+    { key: 'unit', column: 'unit', label: 'Unidade', type: 'text', required: true, upper: true, max: 6, default: 'UN', help: 'Código da unidade (UN, CX, KG…)' },
+    { key: 'typeId', column: 'type_id', label: 'Tipo (SPED)', type: 'ref', ref: 'product-types' },
+    { key: 'groupId', column: 'group_id', label: 'Grupo', type: 'ref', ref: 'product-groups' },
+    { key: 'origin', column: 'origin', label: 'Origem da mercadoria', type: 'enum', options: PRODUCT_ORIGINS, default: '0' },
+    { key: 'costPrice', column: 'cost_price', label: 'Preço de custo', type: 'decimal', default: 0 },
+    { key: 'salePrice', column: 'sale_price', label: 'Preço de venda', type: 'decimal', default: 0 },
+    { key: 'stock', column: 'stock', label: 'Estoque atual', type: 'decimal', default: 0 },
+    { key: 'minStock', column: 'min_stock', label: 'Estoque mínimo', type: 'decimal', default: 0 },
+    { key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true },
+  ],
+}
