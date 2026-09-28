@@ -47,6 +47,7 @@ export interface NewTitle {
   invoiceId?: string | null
   notes?: string | null
   userId: string
+  costCenterId?: string | null
 }
 
 export async function createTitles(tx: Db, t: NewTitle) {
@@ -55,10 +56,10 @@ export async function createTitles(tx: Db, t: NewTitle) {
     const row = await one(
       tx,
       `INSERT INTO financial_titles (kind, company_id, customer_id, supplier_id, category_id, description, document, installment, installments,
-                                     issue_date, due_date, amount, sales_invoice_id, invoice_id, notes, created_by, doc_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+                                     issue_date, due_date, amount, sales_invoice_id, invoice_id, notes, created_by, doc_type, cost_center_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
       [t.kind, t.companyId, t.customerId ?? null, t.supplierId ?? null, t.categoryId, t.description, t.document ?? null, i + 1, t.parcels.length,
-        t.issueDate, parcel.dueDate, parcel.amount, t.salesInvoiceId ?? null, t.invoiceId ?? null, t.notes ?? null, t.userId, t.docType ?? 'OUT'],
+        t.issueDate, parcel.dueDate, parcel.amount, t.salesInvoiceId ?? null, t.invoiceId ?? null, t.notes ?? null, t.userId, t.docType ?? 'OUT', t.costCenterId ?? null],
     )
     ids.push(row!.id)
   }

@@ -8,6 +8,7 @@ import { Loading, PageHeader, ProductSelect, Status } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useUser } from '../../lib/auth'
 import { useOptions } from '../../lib/catalog'
+import { useCostCenters } from '../../lib/costCenters'
 import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction } from '../../lib/hooks'
 import type { Product } from '../../lib/types'
@@ -32,6 +33,8 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
   const tables = useOptions('price-tables')
   const companies = useOptions('companies')
   const operations = useOptions('operation-types')
+  const costCenters = useCostCenters()
+  const [costCenterId, setCostCenterId] = useState<string | null>(null)
   const [doc, setDoc] = useState<SalesDoc | null>(null)
   const [loaded, setLoaded] = useState(!id)
   const [form, setForm] = useState({ customerId: null as string | null, paymentTermId: null as string | null, priceTableId: null as string | null, companyId: null as string | null, operationTypeId: null as string | null, validUntil: '', freight: 0, discount: 0, notes: '' })
@@ -47,6 +50,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
     setDoc(o)
     setForm({ customerId: o.customerId, paymentTermId: o.paymentTermId, priceTableId: o.priceTableId, companyId: o.companyId, operationTypeId: o.operationTypeId, validUntil: o.validUntil ?? '', freight: o.freight, discount: o.discount, notes: o.notes ?? '' })
     setLines(o.items.map(fromItem))
+    setCostCenterId((o as SalesDoc & { costCenterId?: string | null }).costCenterId ?? null)
     setPreview(o.taxes ? { totals: o.taxes, warnings: [], items: o.items.map((i) => ({ cfop: i.cfop ?? null, taxes: i.taxes!, unitPrice: i.unitPrice })) } : null)
   }
   useEffect(() => {
@@ -60,6 +64,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
 
   const locked = !!doc && doc.status !== 'aberto'
   const body = () => ({
+    costCenterId: costCenterId || undefined,
     customerId: form.customerId, paymentTermId: form.paymentTermId, priceTableId: form.priceTableId || undefined, companyId: form.companyId || undefined,
     operationTypeId: form.operationTypeId || undefined, validUntil: form.validUntil || undefined, freight: form.freight || 0, discount: form.discount || 0,
     notes: form.notes || undefined, items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, discountPct: l.discountPct })),
@@ -82,7 +87,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
   if (!loaded) return <Loading />
   const itemsTotal = lines.reduce((s, l) => s + lineTotal(l), 0)
   const saved = doc && JSON.stringify({ c: doc.customerId, t: doc.paymentTermId, co: doc.companyId, op: doc.operationTypeId, f: doc.freight, d: doc.discount, l: doc.items.map((l) => [l.productId, l.quantity, l.unitPrice, l.discountPct]) })
-  const dirty = !doc || saved !== signature || form.priceTableId !== doc.priceTableId || (form.validUntil || null) !== doc.validUntil || (form.notes || null) !== doc.notes
+  const dirty = !doc || saved !== signature || form.priceTableId !== doc.priceTableId || (form.validUntil || null) !== doc.validUntil || (form.notes || null) !== doc.notes || costCenterId !== ((doc as SalesDoc & { costCenterId?: string | null }).costCenterId ?? null)
 
   const addProduct = async (p: Product | null) => {
     if (!p) return
@@ -141,6 +146,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
           {kind === 'quote' && <TextInput type="date" label="Validade" placeholder="Padrão do parâmetro MV_ORCVAL" value={form.validUntil} onChange={(e) => setForm({ ...form, validUntil: e.currentTarget.value })} disabled={locked} />}
           <Select label="Empresa/filial" placeholder="Matriz" data={companies} value={form.companyId} onChange={(v) => setForm({ ...form, companyId: v })} clearable disabled={locked} />
           <Select label="Tipo de operação" placeholder="S01 · Venda de mercadoria" data={operations.filter((o) => o.label.startsWith('S'))} value={form.operationTypeId} onChange={(v) => setForm({ ...form, operationTypeId: v })} clearable disabled={locked} />
+          <Select label="Centro de custo" placeholder="Sem centro de custo" data={costCenters} value={costCenterId} onChange={setCostCenterId} clearable searchable disabled={locked} />
           {doc && <div><Text size="sm" fw={500}>Cliente</Text><Text size="sm" c="dimmed" ff="monospace">{cnpj(doc.customerDocument)}{doc.customerUf && ` · ${doc.customerUf}`} · {{ '1': 'contribuinte', '2': 'isento', '9': 'não contribuinte' }[doc.customerTaxpayer as '1']}</Text></div>}
         </SimpleGrid>
       </Card>

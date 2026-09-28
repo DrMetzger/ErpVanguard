@@ -68,6 +68,11 @@ Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal) · **Co
   lançadas, pelas duplicatas do XML), baixa parcial/total com desconto e juros, estorno, bancos e caixa com parâmetros de
   cobrança CNAB 240/400 (carteira, convênio, beneficiário, nosso número, multa, juros, protesto), plano de contas e fluxo de
   caixa dia a dia.
+- **Centros de custo e DRE:** centros analíticos/sintéticos (hierarquia) nos títulos, orçamentos, pedidos e notas de venda,
+  notas de entrada e movimentos de estoque (os títulos gerados herdam da nota). Cada conta do plano de contas aponta a linha
+  da DRE (natureza financeira). DRE gerencial mês a mês por competência (receita das notas, impostos das notas e devoluções
+  como deduções, CMV pelo custo médio, despesas pelos títulos), com comparação e filtro por centro; relatório de receitas,
+  despesas e resultado por centro (competência ou caixa) com detalhamento. Ambos exportam CSV e imprimem.
 - **BI Avançado:** faturamento, margem bruta (preço − custo médio na hora da venda), ticket médio, compras, a receber/pagar,
   estoque; mês a mês, curva ABC, clientes, UF e vendedores; cada gráfico tem versão em tabela e exporta CSV (Excel).
 - **Configurações:** chave e modelos do Gemini (chave criptografada no banco, prioridade sobre o secret do
@@ -99,7 +104,7 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   Opcional: a variável `GEMINI_MODEL` (padrão `gemini-3.8-flash`).
 
 Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
-`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs`, `node test/cost-center-flow.mjs` (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD`).
 
 ### Desenvolvimento local
