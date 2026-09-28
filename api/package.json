@@ -5,11 +5,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "test": "npm run build && node test/gemini.test.mjs && node test/taxes.test.mjs",
+    "test": "npm run build && node test/gemini.test.mjs && node test/taxes.test.mjs && node test/nfe-xml.test.mjs",
     "test:compras": "node test/purchasing-flow.mjs",
     "test:email": "node test/email-flow.mjs"
   },
   "dependencies": {
+    "@brasil-fiscal/nfe": "^2.0.7",
     "@nestjs/common": "^12.1.0",
     "@nestjs/core": "^12.1.0",
     "@nestjs/jwt": "^12.0.2",
@@ -23,6 +24,7 @@
     "js-brasil": "^2.8.0",
     "node-forge": "^1.4.0",
     "nodemailer": "^10.0.12",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

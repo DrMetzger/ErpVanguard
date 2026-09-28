@@ -2,7 +2,7 @@ import { one, type Db } from '../common/db'
 import { round2 } from '../finance/finance.logic'
 import type { ParametersService } from '../params/parameters.service'
 
-// Motor de impostos da venda (comércio): ICMS, ICMS-ST, IPI, FCP, DIFAL, PIS e COFINS.
+// Motor de impostos da venda (comércio): ICMS, ICMS-ST, IPI, FCP, FCP-ST, DIFAL, PIS e COFINS.
 // As regras vêm da "Matriz de impostos" (tax_rules); sem regra, usa o padrão do regime da empresa.
 
 export type Regime = 'simples' | 'simples_excesso' | 'mei' | 'presumido' | 'real'
@@ -19,7 +19,8 @@ export interface TaxItemInput {
 
 export interface ItemTaxes {
   icms: { cst: string; base: number; rate: number; value: number; reduction: number; snCreditRate?: number; snCredit?: number }
-  st: { base: number; mva: number; rate: number; value: number } | null
+  // fcpRate/fcpValue: FCP retido por ST (vFCPST), sobre a mesma base da ST
+  st: { base: number; mva: number; rate: number; value: number; fcpRate?: number; fcpValue?: number } | null
   ipi: { cst: string; base: number; rate: number; value: number } | null
   fcp: { base: number; rate: number; value: number } | null
   difal: { base: number; destRate: number; interRate: number; value: number; fcpRate: number; fcpValue: number } | null
@@ -34,7 +35,7 @@ export interface ItemTaxes {
 
 export interface TaxTotals {
   products: number; discount: number; freight: number
-  icmsBase: number; icms: number; stBase: number; st: number; ipi: number; fcp: number; difal: number; fcpDest: number; pis: number; cofins: number; snCredit: number
+  icmsBase: number; icms: number; stBase: number; st: number; fcpSt?: number; ipi: number; fcp: number; difal: number; fcpDest: number; pis: number; cofins: number; snCredit: number
   approxTax?: number
   total: number
 }
@@ -137,6 +138,11 @@ export function computeTaxes(ctx: TaxContext, items: TaxItemInput[], freight: nu
       icms.snCredit = round2(fullBase * credit / 100)
     }
 
+    // FCP da operação interna (regime normal, ICMS tributado)
+    let fcp: ItemTaxes['fcp'] = null
+    const fcpRate = num(icmsRule?.fcp_rate) ?? origUf.fcp
+    if (!interstate && taxed && fcpRate > 0) fcp = { base: icms.base, rate: fcpRate, value: round2(icms.base * fcpRate / 100) }
+
     // ICMS-ST (precisa da regra com a MVA)
     const stRule = pick(ctx, 'ICMS_ST', item)
     const stCst = simples ? ['201', '202', '203'] : ['10', '30', '70']
@@ -150,15 +156,16 @@ export function computeTaxes(ctx: TaxContext, items: TaxItemInput[], freight: nu
       const stBase = round2((value + fr + (ipi?.value ?? 0)) * (1 + mva / 100) * (1 - Number(stRule.base_reduction ?? 0) / 100))
       const own = taxed ? icms.value : round2(fullBase * (interstate ? inter : origUf.internal) / 100) // Simples: ICMS próprio presumido
       st = { base: stBase, mva, rate: intra, value: Math.max(0, round2(stBase * intra / 100 - own)) }
+      // FCP-ST: % da regra de ST (fcp_rate) ou o FCP da UF de destino, menos o FCP próprio
+      const fcpStRate = num(stRule.fcp_rate) ?? destUf.fcp
+      if (fcpStRate > 0) {
+        st.fcpRate = fcpStRate
+        st.fcpValue = Math.max(0, round2(stBase * fcpStRate / 100 - (fcp?.value ?? 0)))
+      }
       if (!stCst.includes(cst)) warnings.push(`Item ${n + 1}: há regra de ICMS-ST mas o CST/CSOSN ${cst} não é de substituição (use ${stCst.join('/')})`)
     } else if (stCst.includes(cst)) {
       warnings.push(`Item ${n + 1}: CST/CSOSN ${cst} é de substituição tributária, mas não há regra de ICMS-ST (MVA) na matriz de impostos`)
     }
-
-    // FCP da operação interna (regime normal, ICMS tributado)
-    let fcp: ItemTaxes['fcp'] = null
-    const fcpRate = num(icmsRule?.fcp_rate) ?? origUf.fcp
-    if (!interstate && taxed && fcpRate > 0) fcp = { base: icms.base, rate: fcpRate, value: round2(icms.base * fcpRate / 100) }
 
     // DIFAL para não contribuinte de outra UF (EC 87/2015)
     let difal: ItemTaxes['difal'] = null
@@ -197,7 +204,7 @@ export function computeTaxes(ctx: TaxContext, items: TaxItemInput[], freight: nu
 
     const taxes: ItemTaxes = {
       icms, st, ipi, fcp, difal, pis, cofins, freight: fr, discount: dc, rules, approx,
-      total: round2(value + fr + (ipi?.value ?? 0) + (st?.value ?? 0)),
+      total: round2(value + fr + (ipi?.value ?? 0) + (st?.value ?? 0) + (st?.fcpValue ?? 0)),
     }
     return { key: item.key, taxes }
   })
@@ -205,7 +212,7 @@ export function computeTaxes(ctx: TaxContext, items: TaxItemInput[], freight: nu
   const sum = (f: (t: ItemTaxes) => number) => round2(result.reduce((s, r) => s + f(r.taxes), 0))
   const totals: TaxTotals = {
     products: round2(items.reduce((s, i) => s + i.amount, 0)), discount: round2(discount), freight: round2(freight),
-    icmsBase: sum((t) => t.icms.base), icms: sum((t) => t.icms.value), stBase: sum((t) => t.st?.base ?? 0), st: sum((t) => t.st?.value ?? 0),
+    icmsBase: sum((t) => t.icms.base), icms: sum((t) => t.icms.value), stBase: sum((t) => t.st?.base ?? 0), st: sum((t) => t.st?.value ?? 0), fcpSt: sum((t) => t.st?.fcpValue ?? 0),
     ipi: sum((t) => t.ipi?.value ?? 0), fcp: sum((t) => t.fcp?.value ?? 0), difal: sum((t) => t.difal?.value ?? 0), fcpDest: sum((t) => t.difal?.fcpValue ?? 0),
     pis: sum((t) => t.pis.value), cofins: sum((t) => t.cofins.value), snCredit: sum((t) => t.icms.snCredit ?? 0),
     approxTax: sum((t) => t.approx?.value ?? 0),
