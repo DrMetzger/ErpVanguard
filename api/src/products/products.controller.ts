@@ -13,8 +13,10 @@ import {
   Query,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { ILike, QueryFailedError, Repository } from 'typeorm'
+import { DataSource, ILike, QueryFailedError, Repository } from 'typeorm'
+import { ensureNcm } from '../catalog/ncm'
 import { CustomFieldsService } from '../custom/custom-fields.service'
+import { SettingsService } from '../settings/settings.service'
 import { CreateProductDto, UpdateProductDto } from './product.dto'
 import { removeVideoFile } from './product-videos.controller'
 import { Product } from './product.entity'
@@ -23,7 +25,12 @@ const UNIQUE_VIOLATION = '23505'
 
 @Controller('products')
 export class ProductsController {
-  constructor(@InjectRepository(Product) private readonly products: Repository<Product>, private readonly custom: CustomFieldsService) {}
+  constructor(
+    @InjectRepository(Product) private readonly products: Repository<Product>,
+    private readonly custom: CustomFieldsService,
+    private readonly db: DataSource,
+    private readonly settings: SettingsService,
+  ) {}
 
   @Get()
   async list(@Query('q') q?: string) {
@@ -73,7 +80,10 @@ export class ProductsController {
 
   private async save(product: Product) {
     try {
-      return await this.products.save(product)
+      const saved = await this.products.save(product)
+      // NCM novo entra no cadastro sozinho, sem atrasar a resposta (a IA completa a descrição depois).
+      void ensureNcm(this.db, saved.ncm, () => this.settings.gemini())
+      return saved
     } catch (error) {
       if (error instanceof QueryFailedError && (error as { code?: string }).code === UNIQUE_VIOLATION) {
         throw new ConflictException('Já existe um produto com este código (SKU)')

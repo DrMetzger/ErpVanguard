@@ -7,6 +7,7 @@ import { numbers, one, type Db } from '../common/db'
 import { addDays, categoryByCode, createTitles, round2, splitAmount, termDays, today } from '../finance/finance.logic'
 import { code, found } from '../purchasing/purchasing.helpers'
 import { ParametersService } from '../params/parameters.service'
+import { takeInvoiceNumber } from './numbering'
 import { SalesDocDto, SalesDocsService } from './sales-docs.service'
 import type { User } from '../users/user.entity'
 
@@ -24,6 +25,10 @@ class InvoiceListQuery {
 class PriceQuery {
   @IsUUID() productId: string
   @IsOptional() @IsUUID() priceTableId?: string
+}
+
+class ReadinessQuery {
+  @IsOptional() @IsUUID() companyId?: string
 }
 
 class CancelDto {
@@ -53,10 +58,17 @@ export class SalesController {
     this.requireSales(me)
     const prep = await this.docs.prepare(this.db, dto)
     return {
-      totals: prep.totals, warnings: prep.warnings,
+      totals: prep.totals, warnings: prep.warnings, regime: prep.regime,
       items: prep.lines.map((l) => ({ productId: l.productId, sku: l.sku, name: l.name, unit: l.unit, stock: l.stock, quantity: l.quantity, unitPrice: l.unitPrice,
         discountPct: l.discountPct, total: l.total, cfop: l.fiscal?.cfop ?? null, tesCode: l.fiscal?.tes.code ?? null, taxes: l.taxes })),
     }
+  }
+
+  // O que falta cadastrar antes de vender/faturar (a tela avisa ao abrir o formulário, não só ao salvar).
+  @Get('sales/readiness')
+  async readiness(@CurrentUser() me: User, @Query() q: ReadinessQuery) {
+    this.requireSales(me)
+    return this.docs.readiness(this.db, q.companyId)
   }
 
   @Get('sales-orders')
@@ -128,15 +140,15 @@ export class SalesController {
         throw new BadRequestException(`Estoque insuficiente: ${short.map((l) => `${l.sku} (tem ${l.stock}, pedido ${l.quantity})`).join('; ')}`)
       }
 
-      await tx.query(`SELECT id FROM companies WHERE id = $1 FOR UPDATE`, [order.company_id])
-      const [{ next }] = await tx.query(`SELECT coalesce(max(number), 0) + 1 AS next FROM sales_invoices WHERE company_id = $1 AND series = 1`, [order.company_id])
+      // Número pela Numeração de notas (série do MV_SERNFE, espécie do MV_ESPECIE), com lock da série.
+      const nf = await takeInvoiceNumber(tx, this.params, order.company_id)
       const invoice = (await one(
         tx,
-        `INSERT INTO sales_invoices (company_id, number, order_id, customer_id, operation_type_id, products_total, freight, discount, total, taxes, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, number`,
-        [order.company_id, next, id, order.customer_id, order.operation_type_id, prep.totals.products, prep.freight, prep.discount, prep.totals.total, JSON.stringify(prep.totals), me.id],
+        `INSERT INTO sales_invoices (company_id, series, model, number, order_id, customer_id, operation_type_id, products_total, freight, discount, total, taxes, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, number, series`,
+        [order.company_id, nf.series, nf.model, nf.number, id, order.customer_id, order.operation_type_id, prep.totals.products, prep.freight, prep.discount, prep.totals.total, JSON.stringify(prep.totals), me.id],
       ))!
-      const reference = `NF ${invoice.number}/1`
+      const reference = `NF ${invoice.number}/${invoice.series}`
       for (const [n, l] of prep.lines.entries()) {
         const r = l.fiscal!
         await tx.query(
@@ -255,10 +267,12 @@ export class SalesController {
       db,
       `SELECT i.id, i.number, i.series, i.issued_at AS "issuedAt", i.products_total AS "productsTotal", i.freight, i.discount, i.total, i.status,
               i.sefaz_status AS "sefazStatus", i.cancel_reason AS "cancelReason", i.order_id AS "orderId", o.number AS "orderNumber", i.taxes,
-              ot.code || ' · ' || ot.name AS "operationLabel", i.company_id AS "companyId",
+              ot.code || ' · ' || ot.name AS "operationLabel", i.company_id AS "companyId", i.model,
+              co.tax_regime AS "taxRegime", co.code || ' · ' || coalesce(co.trade_name, co.name) AS "companyLabel",
               c.name AS "customerName", c.document AS "customerDocument", c.ie AS "customerIe", c.street AS "customerStreet", c.number AS "customerNumber",
               c.district AS "customerDistrict", c.city AS "customerCity", c.uf AS "customerUf", c.zip AS "customerZip"
        FROM sales_invoices i JOIN customers c ON c.id = i.customer_id JOIN operation_types ot ON ot.id = i.operation_type_id LEFT JOIN sales_orders o ON o.id = i.order_id
+       JOIN companies co ON co.id = i.company_id
        WHERE i.id = $1`,
       [id],
     ), 'Nota não encontrada')

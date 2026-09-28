@@ -117,6 +117,8 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, pattern: '^\\d{8}$', patternMessage: 'O NCM tem 8 dígitos', list: true },
       { key: 'description', column: 'description', label: 'Descrição', type: 'text', required: true, max: 250, list: true, span: 2 },
       { key: 'ipiRate', column: 'ipi_rate', label: 'Alíquota de IPI (%)', type: 'decimal', list: true },
+      { key: 'taxEstimateRate', column: 'tax_estimate_rate', label: 'Tributos aproximados (%)', type: 'decimal', help: 'Lei 12.741 (tabela IBPT, federal + estadual). Vazio: parâmetro MV_IBPTPCT' },
+      { key: 'pending', column: 'pending', label: 'Descrição pendente', type: 'bool', default: false, list: true, help: 'Cadastrado sozinho ao salvar um produto; confira a descrição' },
       active,
     ],
   },

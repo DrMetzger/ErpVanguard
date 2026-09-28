@@ -8,7 +8,9 @@ import { numbers, one, type Db } from '../common/db'
 import { round2 } from '../finance/finance.logic'
 import { ParametersService } from '../params/parameters.service'
 import { code, found } from '../purchasing/purchasing.helpers'
+import { isValidCnpj } from '../purchasing/documents'
 import { SettingsService } from '../settings/settings.service'
+import { saleSeries } from './numbering'
 import { computeTaxes, loadTaxContext, type ItemTaxes, type TaxTotals } from '../taxes/tax-engine'
 import type { User } from '../users/user.entity'
 
@@ -44,7 +46,7 @@ export interface PreparedLine {
   quantity: number; unitPrice: number; discountPct: number; total: number; fiscal: FiscalResult | null; taxes: ItemTaxes
 }
 export interface Prepared {
-  companyId: string; customer: { id: string; name: string; uf: string | null; taxpayer: string }; operation: { id: string; isReturn: boolean }
+  companyId: string; regime: string; customer: { id: string; name: string; uf: string | null; taxpayer: string }; operation: { id: string; isReturn: boolean }
   paymentTermId: string; priceTableId: string | null; freight: number; discount: number; lines: PreparedLine[]; totals: TaxTotals; warnings: string[]
 }
 
@@ -62,8 +64,8 @@ export class SalesDocsService {
 
   async prepare(tx: Db, dto: SalesDocDto): Promise<Prepared> {
     const company = dto.companyId
-      ? found(await one(tx, `SELECT id FROM companies WHERE id = $1 AND active`, [dto.companyId]), 'Empresa/filial não encontrada')
-      : await one(tx, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`)
+      ? found(await one(tx, `SELECT id, tax_regime FROM companies WHERE id = $1 AND active`, [dto.companyId]), 'Empresa/filial não encontrada')
+      : await one(tx, `SELECT id, tax_regime FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`)
     if (!company) throw new BadRequestException('Cadastre a empresa em Administração › Empresas antes de vender')
     const customer = found(await one(tx, `SELECT id, name, uf, taxpayer, active FROM customers WHERE id = $1`, [dto.customerId]), 'Cliente não encontrado')
     if (!customer.active) throw new BadRequestException('Cliente inativo')
@@ -104,10 +106,51 @@ export class SalesDocsService {
       return { key: String(i), productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: l.fiscal?.cfop ?? null, amount: l.total }
     }), freight, discount)
     return {
-      companyId: company.id, customer: { id: customer.id, name: customer.name, uf: customer.uf, taxpayer: customer.taxpayer },
+      companyId: company.id, regime: company.tax_regime, customer: { id: customer.id, name: customer.name, uf: customer.uf, taxpayer: customer.taxpayer },
       operation: { id: operation.id, isReturn: !!operation.is_return }, paymentTermId: dto.paymentTermId, priceTableId: dto.priceTableId ?? null,
       freight, discount, totals: taxes.totals, warnings: [...warnings, ...taxes.warnings],
       lines: lines.map((l, i) => { const { _product: _p, ...rest } = l as any; return { ...rest, taxes: taxes.items[i]!.taxes } }),
+    }
+  }
+
+  // Pré-requisitos da venda: empresa com regime, CNPJ, IE e endereço; tipo de operação S01; série da NF-e.
+  // "blocking" impede salvar o documento; o resto é aviso (a nota vai precisar para ser transmitida).
+  async readiness(db: Db, companyId?: string) {
+    const issues: { key: string; message: string; blocking: boolean; link: string }[] = []
+    const EMPRESAS = '/empresas'
+    const PARAMS = '/parametros'
+    const company = await one(
+      db,
+      `SELECT id, code, name, trade_name, document, ie, tax_regime, street, number, district, city, zip, uf, is_head FROM companies
+       WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY is_head DESC, code LIMIT 1`,
+      [companyId ?? null],
+    )
+    if (!company) {
+      issues.push({ key: 'company', message: 'Nenhuma empresa cadastrada: cadastre a matriz (CNPJ, regime tributário, IE e endereço) antes de vender', blocking: true, link: EMPRESAS })
+    } else {
+      const who = `${company.code} · ${company.trade_name || company.name}`
+      if (!company.tax_regime) issues.push({ key: 'taxRegime', message: `${who}: informe o regime tributário`, blocking: true, link: EMPRESAS })
+      if (!isValidCnpj(company.document ?? '')) issues.push({ key: 'cnpj', message: `${who}: CNPJ inválido`, blocking: false, link: EMPRESAS })
+      if (!company.ie) issues.push({ key: 'ie', message: `${who}: falta a inscrição estadual (IE)`, blocking: false, link: EMPRESAS })
+      const address = (['street', 'number', 'district', 'city', 'zip'] as const).filter((k) => !company[k])
+      const names = { street: 'endereço', number: 'número', district: 'bairro', city: 'cidade', zip: 'CEP' }
+      if (address.length) issues.push({ key: 'address', message: `${who}: endereço incompleto (${address.map((k) => names[k]).join(', ')})`, blocking: false, link: EMPRESAS })
+    }
+    if (!(await one(db, `SELECT 1 FROM operation_types WHERE code = 'S01'`))) issues.push({ key: 'operation', message: 'Cadastre o tipo de operação S01 (venda) em Cadastros › Fiscal', blocking: true, link: '/cadastros/fiscal/operacoes' })
+    const { series, model } = await saleSeries(db, this.params)
+    let numbering: { series: number; model: string | null; nextNumber: number | null } = { series, model, nextNumber: null }
+    if (!model) issues.push({ key: 'series', message: `A série ${series} da NF-e (MV_SERNFE) não está no parâmetro MV_ESPECIE`, blocking: false, link: PARAMS })
+    else if (model !== '55') issues.push({ key: 'series', message: `A série ${series} (MV_SERNFE) é de NFC-e; a venda por pedido emite NF-e (SPED)`, blocking: false, link: PARAMS })
+    if (company) {
+      const row = await one(db, `SELECT next_number, active FROM invoice_numbering WHERE company_id = $1 AND series = $2`, [company.id, series])
+      const next = row ? Number(row.next_number) : Number((await one(db, `SELECT coalesce(max(number), 0) + 1 AS n FROM sales_invoices WHERE company_id = $1 AND series = $2`, [company.id, series]))!.n)
+      numbering = { series, model, nextNumber: next }
+      if (row && !row.active) issues.push({ key: 'series', message: `A série ${series} está inativa em Numeração de notas`, blocking: false, link: '/parametros' })
+    }
+    return {
+      ready: !issues.some((i) => i.blocking), complete: issues.length === 0, issues,
+      company: company ? { id: company.id, label: `${company.code} · ${company.trade_name || company.name}`, regime: company.tax_regime, uf: company.uf } : null,
+      numbering,
     }
   }
 

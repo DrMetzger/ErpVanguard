@@ -6,6 +6,7 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { isAdmin } from '../common/access'
 import { numbers, one } from '../common/db'
 import { resolveFiscal } from './fiscal'
+import { fillNcm } from './ncm'
 import { ParametersService } from '../params/parameters.service'
 import { computeTaxes, loadTaxContext } from '../taxes/tax-engine'
 import { SettingsService } from '../settings/settings.service'
@@ -84,5 +85,17 @@ export class ExtrasController {
     const ctx = await loadTaxContext(this.db, this.params, { companyId: company.id, destUf: dto.uf ?? null, taxpayer: dto.taxpayer ?? '9', operationTypeId: dto.operationTypeId, date: new Date().toISOString().slice(0, 10) })
     const taxes = computeTaxes(ctx, [{ key: '0', productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: result.cfop, amount: dto.amount }], dto.freight ?? 0, 0)
     return { ...result, regime: ctx.regime, taxes: taxes.items[0]!.taxes, totals: taxes.totals, warnings: taxes.warnings }
+  }
+
+  // ---- NCM cadastrado sozinho: busca a descrição oficial com a IA
+  @Post('catalog/ncm/:id/describe')
+  async describeNcm(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
+    if (!canEdit(me, 'cadastro', 'fiscal')) throw new ForbiddenException('Seu usuário não pode alterar o cadastro de NCM')
+    const row = await one(this.db, `SELECT code, pending FROM ncm WHERE id = $1`, [id])
+    if (!row) throw new NotFoundException('NCM não encontrado')
+    if (!row.pending) throw new BadRequestException('Este NCM já tem descrição')
+    const result = await fillNcm(this.db, row.code, await this.settings.gemini())
+    if (!result.ok) throw new BadRequestException(`Não foi possível buscar a descrição: ${result.reason}`)
+    return numbers((await one(this.db, `SELECT id, code, description, ipi_rate AS "ipiRate", pending, source FROM ncm WHERE id = $1`, [id]))!, 'ipiRate')
   }
 }
