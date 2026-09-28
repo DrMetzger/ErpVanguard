@@ -13,8 +13,12 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './lib/auth'
 import { theme } from './theme'
+import { reloadForNewVersion, ScreenGuard } from './components/ScreenGuard'
 
 if (Capacitor.isNativePlatform()) import('./native')
+
+// Arquivo de tela da versão antiga sumiu (acabou de publicar): recarrega sozinho em vez de tela preta.
+window.addEventListener('vite:preloadError', (event) => { if (reloadForNewVersion()) event.preventDefault() })
 
 const colorSchemeManager = localStorageColorSchemeManager({ key: 'vanguard.color-scheme' })
 
@@ -24,7 +28,9 @@ createRoot(document.getElementById('root')!).render(
       <Notifications position="top-right" limit={3} autoClose={2500} />
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <ScreenGuard>
+            <App />
+          </ScreenGuard>
         </AuthProvider>
       </BrowserRouter>
     </MantineProvider>

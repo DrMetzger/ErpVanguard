@@ -4,6 +4,7 @@ import {
 import { useDisclosure, useLocalStorage, useMediaQuery } from '@mantine/hooks'
 import { IconAdjustments, IconBuilding, IconDoorExit, IconForms, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMailCog, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { ScreenGuard } from './ScreenGuard'
 import { useAuth, useUser } from '../lib/auth'
 import { home, modules } from '../modules'
 import { CADASTRO_GROUPS } from '../pages/cadastros/groups'
@@ -155,7 +156,7 @@ export default function AppLayout() {
 
       <AppShell.Main>
         <Box maw={1280} mx="auto">
-          <Outlet />
+          <ScreenGuard resetKey={location.pathname}><Outlet /></ScreenGuard>
         </Box>
       </AppShell.Main>
     </AppShell>

@@ -5,14 +5,17 @@
 		reverse_proxy api:3000
 	}
 
+	# Arquivos das telas (nome com hash): cache de 1 ano; se não existir (versão antiga), 404 e o app recarrega sozinho.
+	handle /assets/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Páginas: sempre conferem se há versão nova (nada de tela antiga depois de publicar).
 	handle {
 		root * /srv
-		# Arquivos com hash no nome podem ficar em cache por 1 ano.
-		@assets path /assets/*
-		header @assets Cache-Control "public, max-age=31536000, immutable"
-		# A página (index.html) sempre confere se há versão nova: nada de tela antiga depois de publicar.
-		@page not path /assets/*
-		header @page Cache-Control "no-cache"
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
