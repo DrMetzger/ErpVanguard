@@ -6,6 +6,7 @@ import { Loading, PageHeader, ProductSelect, Status } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useUser } from '../../lib/auth'
 import { useOptions } from '../../lib/catalog'
+import { useCostCenters } from '../../lib/costCenters'
 import { can, cnpj, date, money, price, qty } from '../../lib/format'
 import { useAction, useApi } from '../../lib/hooks'
 import type { CatalogRow, Invoice, InvoiceItem, Product } from '../../lib/types'
@@ -26,6 +27,7 @@ export default function InvoiceDetail() {
   const { busy, run } = useAction()
   const user = useUser()
   const operations = useOptions('operation-types')
+  const costCenters = useCostCenters()
   const { data: tesList } = useApi<CatalogRow[]>('/catalog/tes')
   const entryTes = (tesList ?? []).filter((t) => t.kind === 'E' && t.active).map((t) => ({ value: String(t.id), label: `${t.code} · ${t.description}` }))
 
@@ -36,7 +38,7 @@ export default function InvoiceDetail() {
   const fiscal = can(user, 'fiscal')
   const noTes = nf.items.filter((i) => !i.tesId).length
   const unmatched = nf.items.filter((i) => !i.productId).length
-  const update = (body: { purchaseOrderId?: string | null; operationTypeId?: string; items?: { id: string; productId?: string | null; orderItemId?: string | null; tesId?: string }[] }) =>
+  const update = (body: { purchaseOrderId?: string | null; operationTypeId?: string; costCenterId?: string | null; items?: { id: string; productId?: string | null; orderItemId?: string | null; tesId?: string }[] }) =>
     run(async () => setData(await api<Invoice>(`/invoices/${id}`, { method: 'PUT', body: { items: [], ...body } })))
   const ai = () => run(async () => setData(await api<Invoice>(`/invoices/${id}/ai-match`, { method: 'POST' })), 'Sugestões da IA aplicadas')
   const summary = [
@@ -70,6 +72,12 @@ export default function InvoiceDetail() {
             {pending ? (
               <Select placeholder="Sem pedido" clearable value={nf.purchaseOrderId} onChange={(v) => update({ purchaseOrderId: v })} data={nf.orders.map((o) => ({ value: o.id, label: `${o.code} · ${money(o.total)}` }))} aria-label="Pedido de compra" />
             ) : <Text>{nf.orderCode ?? '—'}</Text>}
+          </div>
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Centro de custo</Text>
+            {pending ? (
+              <Select placeholder="Sem centro de custo" clearable searchable value={(nf as Invoice & { costCenterId?: string | null }).costCenterId ?? null} onChange={(v) => update({ costCenterId: v })} data={costCenters} aria-label="Centro de custo" />
+            ) : <Text>{(nf as Invoice & { costCenter?: string | null }).costCenter ?? '—'}</Text>}
           </div>
         </SimpleGrid>
       </Card>

@@ -7,6 +7,7 @@ import { Money } from '../../components/inputs'
 import { Empty, Loading, Status } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useOptions } from '../../lib/catalog'
+import { useCostCenters } from '../../lib/costCenters'
 import { date, money } from '../../lib/format'
 import { useAction, useApi } from '../../lib/hooks'
 import type { Summary, Title } from './types'
@@ -35,7 +36,9 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
   const [to, setTo] = useState('')
   const [query, setQuery] = useState('')
   const [q] = useDebouncedValue(query.trim(), 250)
-  const params = new URLSearchParams({ kind, status, ...(from && { from }), ...(to && { to }), ...(q && { q }) })
+  const [costCenterId, setCostCenterId] = useState<string | null>(null)
+  const costCenters = useCostCenters()
+  const params = new URLSearchParams({ kind, status, ...(from && { from }), ...(to && { to }), ...(q && { q }), ...(costCenterId && { costCenterId }) })
   const { data, loading, reload } = useApi<Title[]>(`/finance/titles?${params}`)
   const { data: summary, reload: reloadSummary } = useApi<Summary>('/finance/summary')
   const [paying, setPaying] = useState<Title | null>(null)
@@ -64,6 +67,7 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
         <TextInput type="date" label="Vence de" value={from} onChange={(e) => setFrom(e.currentTarget.value)} w={150} />
         <TextInput type="date" label="até" value={to} onChange={(e) => setTo(e.currentTarget.value)} w={150} />
         <TextInput label="Buscar" placeholder={R ? 'Cliente, descrição, documento' : 'Fornecedor, descrição, documento'} leftSection={<IconSearch size={16} />} value={query} onChange={(e) => setQuery(e.currentTarget.value)} w={260} />
+        <Select label="Centro de custo" placeholder="Todos" data={costCenters} value={costCenterId} onChange={setCostCenterId} clearable searchable w={200} />
         <Button ml="auto" leftSection={<IconPlus size={18} />} onClick={() => setCreating(true)}>{R ? 'Nova conta a receber' : 'Nova conta a pagar'}</Button>
       </Group>
 
@@ -84,7 +88,7 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
                       {t.document && <Text size="xs" c="dimmed">{t.document}</Text>}
                     </Table.Td>
                     <Table.Td>{t.installment}/{t.installments}</Table.Td>
-                    <Table.Td><Text size="sm">{t.category ?? '—'}</Text></Table.Td>
+                    <Table.Td><Text size="sm">{t.category ?? '—'}</Text>{t.costCenter && <Text size="xs" c="dimmed">CC {t.costCenter}</Text>}</Table.Td>
                     <Table.Td ta="right">{money(t.amount)}</Table.Td>
                     <Table.Td ta="right" fw={600} c={CREDIT[t.docType] ? 'orange' : undefined}>{CREDIT[t.docType] ? '− ' : ''}{money(t.balance)}</Table.Td>
                     <Table.Td>{t.daysOverdue > 0 ? <Status value="vencido" /> : <Status value={t.status} />}</Table.Td>
@@ -95,7 +99,7 @@ export default function Titles({ kind }: { kind: 'R' | 'P' }) {
                           <Menu.Target><ActionIcon variant="subtle" aria-label="Mais ações"><IconDots size={16} /></ActionIcon></Menu.Target>
                           <Menu.Dropdown>
                             <Menu.Item onClick={() => open(t)}>Detalhes e baixas</Menu.Item>
-                            {['aberto', 'parcial'].includes(t.status) && <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => setEditing(t)}>Alterar vencimento</Menu.Item>}
+                            {['aberto', 'parcial'].includes(t.status) && <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => setEditing(t)}>Alterar vencimento e centro de custo</Menu.Item>}
                             {t.status === 'aberto' && !t.salesInvoiceId && <Menu.Item color="red" leftSection={<IconX size={14} />} onClick={() => cancel(t)}>Cancelar título</Menu.Item>}
                           </Menu.Dropdown>
                         </Menu>
@@ -154,13 +158,14 @@ function NewTitleModal({ kind, onClose, onDone }: { kind: 'R' | 'P'; onClose: ()
   const R = kind === 'R'
   const partners = useOptions(R ? 'customers' : 'suppliers')
   const categories = useOptions('finance-categories')
-  const [form, setForm] = useState({ partnerId: null as string | null, categoryId: null as string | null, description: '', document: '', dueDate: today(), amount: 0, installments: 1, mode: 'dividir', notes: '' })
+  const costCenters = useCostCenters()
+  const [form, setForm] = useState({ partnerId: null as string | null, categoryId: null as string | null, costCenterId: null as string | null, description: '', document: '', dueDate: today(), amount: 0, installments: 1, mode: 'dividir', notes: '' })
   const { busy, run } = useAction()
   const submit = () => run(async () => {
     await api('/finance/titles', {
       method: 'POST',
       body: {
-        kind, [R ? 'customerId' : 'supplierId']: form.partnerId || undefined, categoryId: form.categoryId || undefined, description: form.description,
+        kind, [R ? 'customerId' : 'supplierId']: form.partnerId || undefined, categoryId: form.categoryId || undefined, costCenterId: form.costCenterId || undefined, description: form.description,
         document: form.document || undefined, dueDate: form.dueDate, amount: form.amount, installments: form.installments, mode: form.mode, notes: form.notes || undefined,
       },
     })
@@ -173,8 +178,9 @@ function NewTitleModal({ kind, onClose, onDone }: { kind: 'R' | 'P'; onClose: ()
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <Select label={R ? 'Cliente' : 'Fornecedor'} data={partners} value={form.partnerId} onChange={(v) => setForm({ ...form, partnerId: v })} searchable clearable />
           <Select label="Categoria (plano de contas)" data={cats.length ? cats : categories} value={form.categoryId} onChange={(v) => setForm({ ...form, categoryId: v })} searchable clearable />
-          <TextInput label="Descrição" value={form.description} onChange={(e) => setForm({ ...form, description: e.currentTarget.value })} required />
+          <Select label="Centro de custo" placeholder="Sem centro de custo" data={costCenters} value={form.costCenterId} onChange={(v) => setForm({ ...form, costCenterId: v })} searchable clearable />
           <TextInput label="Documento" placeholder="Nº do boleto, nota, contrato…" value={form.document} onChange={(e) => setForm({ ...form, document: e.currentTarget.value })} />
+          <TextInput label="Descrição" value={form.description} onChange={(e) => setForm({ ...form, description: e.currentTarget.value })} required />
           <TextInput type="date" label="Primeiro vencimento" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.currentTarget.value })} required />
           <Money label="Valor" value={form.amount} onChange={(v) => setForm({ ...form, amount: Number(v) || 0 })} decimalScale={2} required />
           <NumberInput label="Parcelas (mensais)" value={form.installments} onChange={(v) => setForm({ ...form, installments: Math.max(1, Math.min(60, Number(v) || 1)) })} min={1} max={60} />
@@ -197,15 +203,18 @@ function NewTitleModal({ kind, onClose, onDone }: { kind: 'R' | 'P'; onClose: ()
 
 function DueDateModal({ title, onClose, onDone }: { title: Title; onClose: () => void; onDone: () => void }) {
   const [dueDate, setDueDate] = useState(title.dueDate)
+  const [costCenterId, setCostCenterId] = useState(title.costCenterId ?? null)
+  const costCenters = useCostCenters()
   const { busy, run } = useAction()
   return (
-    <Modal opened onClose={onClose} title="Alterar vencimento">
+    <Modal opened onClose={onClose} title="Alterar título">
       <Stack>
         <Text size="sm">{title.description} · {money(title.balance)}</Text>
         <TextInput type="date" label="Novo vencimento" value={dueDate} onChange={(e) => setDueDate(e.currentTarget.value)} />
+        <Select label="Centro de custo" placeholder="Sem centro de custo" data={costCenters} value={costCenterId} onChange={setCostCenterId} searchable clearable />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancelar</Button>
-          <Button loading={busy} onClick={() => run(async () => { await api(`/finance/titles/${title.id}`, { method: 'PATCH', body: { dueDate } }); onDone() }, 'Vencimento alterado')}>Salvar</Button>
+          <Button loading={busy} onClick={() => run(async () => { await api(`/finance/titles/${title.id}`, { method: 'PATCH', body: { dueDate, costCenterId } }); onDone() }, 'Título alterado')}>Salvar</Button>
         </Group>
       </Stack>
     </Modal>
@@ -223,6 +232,7 @@ function TitleDrawer({ title, onClose, onChange }: { title: Title | null; onClos
           <SimpleGrid cols={2}>
             <div><Text size="xs" c="dimmed">{title.kind === 'R' ? 'Cliente' : 'Fornecedor'}</Text><Text size="sm">{title.partner ?? '—'}</Text></div>
             <div><Text size="xs" c="dimmed">Categoria</Text><Text size="sm">{title.category ?? '—'}</Text></div>
+            <div><Text size="xs" c="dimmed">Centro de custo</Text><Text size="sm">{title.costCenter ?? '—'}</Text></div>
             <div><Text size="xs" c="dimmed">Emissão · vencimento</Text><Text size="sm">{date(title.issueDate)} · {date(title.dueDate)}</Text></div>
             <div><Text size="xs" c="dimmed">Parcela</Text><Text size="sm">{title.installment}/{title.installments}</Text></div>
             <div><Text size="xs" c="dimmed">Valor · saldo</Text><Text size="sm" fw={600}>{money(title.amount)} · {money(title.balance)}</Text></div>
