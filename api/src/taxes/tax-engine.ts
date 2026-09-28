@@ -26,6 +26,8 @@ export interface ItemTaxes {
   pis: { cst: string; base: number; rate: number; value: number }
   cofins: { cst: string; base: number; rate: number; value: number }
   freight: number; discount: number
+  // Lei 12.741/2012: valor aproximado dos tributos (percentual do NCM ou do parâmetro MV_IBPTPCT)
+  approx?: { rate: number; value: number }
   total: number // valor do item na nota: produto − desconto + frete + IPI + ST
   rules: string[]
 }
@@ -33,6 +35,7 @@ export interface ItemTaxes {
 export interface TaxTotals {
   products: number; discount: number; freight: number
   icmsBase: number; icms: number; stBase: number; st: number; ipi: number; fcp: number; difal: number; fcpDest: number; pis: number; cofins: number; snCredit: number
+  approxTax?: number
   total: number
 }
 
@@ -42,19 +45,21 @@ export interface TaxContext {
   uf: Map<string, { internal: number; fcp: number }>
   rules: any[]
   ncmIpi: Map<string, number>
-  params: Record<string, boolean | number>
+  ncmEstimate?: Map<string, number>
+  params: Record<string, boolean | number | string>
 }
 
 export async function loadTaxContext(db: Db, params: ParametersService, input: { companyId: string; destUf: string | null; taxpayer: string | null; operationTypeId: string; date: string }): Promise<TaxContext> {
   const company = (await one(db, `SELECT uf, tax_regime, sn_credit_rate FROM companies WHERE id = $1`, [input.companyId]))!
   const ufRows = await db.query(`SELECT uf, internal_rate, fcp_rate FROM uf_icms WHERE active`)
   const rules = await db.query(`SELECT * FROM tax_rules WHERE active AND (valid_from IS NULL OR valid_from <= $1) AND (valid_to IS NULL OR valid_to >= $1)`, [input.date])
-  const ncm = await db.query(`SELECT code, ipi_rate FROM ncm WHERE ipi_rate IS NOT NULL`)
+  const ncm = await db.query(`SELECT code, ipi_rate, tax_estimate_rate FROM ncm WHERE ipi_rate IS NOT NULL OR tax_estimate_rate IS NOT NULL`)
   return {
     regime: company.tax_regime, companyUf: company.uf, destUf: (input.destUf ?? company.uf).toUpperCase(), taxpayer: input.taxpayer ?? '9',
     operationTypeId: input.operationTypeId, date: input.date, snCreditRate: company.sn_credit_rate === null ? null : Number(company.sn_credit_rate),
     uf: new Map(ufRows.map((r: any) => [r.uf, { internal: Number(r.internal_rate), fcp: Number(r.fcp_rate) }])),
-    rules, ncmIpi: new Map(ncm.map((r: any) => [r.code, Number(r.ipi_rate)])), params: await params.all(db),
+    rules, ncmIpi: new Map(ncm.filter((r: any) => r.ipi_rate !== null).map((r: any) => [r.code, Number(r.ipi_rate)])),
+    ncmEstimate: new Map(ncm.filter((r: any) => r.tax_estimate_rate !== null).map((r: any) => [r.code, Number(r.tax_estimate_rate)])), params: await params.all(db),
   }
 }
 
@@ -186,8 +191,12 @@ export function computeTaxes(ctx: TaxContext, items: TaxItemInput[], freight: nu
       if (cst === '102' && item.cfop && !['5102', '6102'].includes(item.cfop)) warnings.push(`Item ${n + 1}: MEI com CSOSN 102 só pode usar CFOP 5102 ou 6102 (rejeição N12a-90)`)
     }
 
+    // Tributos aproximados sobre o valor do item (a lei pede a informação ao consumidor; aqui sai em toda nota)
+    const approxRate = ctx.ncmEstimate?.get(item.ncm ?? '') ?? Number(ctx.params.MV_IBPTPCT ?? 0)
+    const approx = { rate: approxRate, value: round2(value * approxRate / 100) }
+
     const taxes: ItemTaxes = {
-      icms, st, ipi, fcp, difal, pis, cofins, freight: fr, discount: dc, rules,
+      icms, st, ipi, fcp, difal, pis, cofins, freight: fr, discount: dc, rules, approx,
       total: round2(value + fr + (ipi?.value ?? 0) + (st?.value ?? 0)),
     }
     return { key: item.key, taxes }
@@ -199,6 +208,7 @@ export function computeTaxes(ctx: TaxContext, items: TaxItemInput[], freight: nu
     icmsBase: sum((t) => t.icms.base), icms: sum((t) => t.icms.value), stBase: sum((t) => t.st?.base ?? 0), st: sum((t) => t.st?.value ?? 0),
     ipi: sum((t) => t.ipi?.value ?? 0), fcp: sum((t) => t.fcp?.value ?? 0), difal: sum((t) => t.difal?.value ?? 0), fcpDest: sum((t) => t.difal?.fcpValue ?? 0),
     pis: sum((t) => t.pis.value), cofins: sum((t) => t.cofins.value), snCredit: sum((t) => t.icms.snCredit ?? 0),
+    approxTax: sum((t) => t.approx?.value ?? 0),
     total: sum((t) => t.total),
   }
   return { items: result, totals, warnings: [...new Set(warnings)] }

@@ -56,7 +56,16 @@ Início · **Cadastros** (Produtos · Clientes e fornecedores · Fiscal) · **Co
   FCP de cada estado (valores de referência: conferir). O regime (Simples, Simples excesso, MEI, Presumido, Real) fica no cadastro
   da empresa e define o CRT.
 - **Parâmetros** (Administração): comportamento do sistema no estilo MV_ (estoque negativo, validade do orçamento, frete e IPI
-  na base do ICMS, DIFAL, ICMS fora da base do PIS/COFINS, alíquotas de PIS/COFINS).
+  na base do ICMS, DIFAL, ICMS fora da base do PIS/COFINS, alíquotas de PIS/COFINS, tributos aproximados MV_IBPTPCT).
+  **Numeração de notas** (na mesma tela): `MV_ESPECIE` diz a espécie de cada série (`1=SPED;3=NFCE`: SPED = NF-e 55, NFCE = NFC-e 65),
+  `MV_SERNFE` a série da venda; o próximo número fica por empresa e série, com lock (duas notas nunca pegam o mesmo número).
+  Avançar avisa que os números pulados precisam ser inutilizados; voltar só para número ainda não usado e com confirmação.
+- **NCM automático:** produto salvo com NCM que não está no cadastro cria o NCM na hora como "NCM 39269090 (descrição pendente)"; o
+  Gemini (chave e modelos de Configurações) completa a descrição oficial e o IPI em segundo plano, sem atrasar o salvamento. Na tela de
+  NCM, o botão ✨ "Buscar descrição com IA" tenta de novo; corrigir a descrição à mão também tira a pendência.
+- **Antes de vender:** o formulário de orçamento/pedido confere ao abrir (`GET /sales/readiness`) se a empresa tem regime, CNPJ, IE
+  e endereço, se existe o S01 e se a série da NF-e está no MV_ESPECIE, com link para corrigir. Nos totais, o regime explica a nota do
+  Simples (CSOSN 102 sem destaque de ICMS/IPI/PIS/COFINS) e aparece o valor aproximado dos tributos (Lei 12.741: % do NCM ou MV_IBPTPCT).
 - **Personalizar cadastros** (Administração): campos novos em produtos, clientes, fornecedores, empresas e demais cadastros —
   texto (com máscara pronta: CPF, CNPJ, CPF/CNPJ, CEP, telefone, placa, ou personalizada com 9/A/*), texto longo (memo), número,
   inteiro, moeda, data, sim/não, lista suspensa, opções na tela e caixas de marcar —, com opção de coluna na lista. O campo pode
@@ -107,7 +116,7 @@ preço destacado) → **pedido de compra** por fornecedor vencedor → **aprova�
   variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`Nome <email>`).
 
 Testes: `npm test` (integração com o Gemini simulada), `npm run test:compras` e
-`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs`, `node test/cost-center-flow.mjs`, `node test/email-flow.mjs` (este sobe um SMTP local na porta 2599) (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
+`node test/catalog-flow.mjs`, `node test/sales-finance-flow.mjs`, `node test/credit-flow.mjs`, `node test/cost-center-flow.mjs`, `node test/ncm-numbering-flow.mjs`, `node test/email-flow.mjs` (este sobe um SMTP local na porta 2599) (fluxos completos contra uma API rodando, com `API`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD`).
 
 ### Desenvolvimento local

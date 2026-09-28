@@ -12,7 +12,7 @@ export class ParametersController {
   async list(@CurrentUser() me: User) {
     requireAdmin(me)
     const values = await this.params.all()
-    return PARAMS.map((p) => ({ ...p, value: values[p.key] }))
+    return PARAMS.map(({ pattern: _pattern, ...p }) => ({ ...p, value: values[p.key] }))
   }
 
   @Put()

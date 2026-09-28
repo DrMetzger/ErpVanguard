@@ -48,6 +48,24 @@ ${JSON.stringify(items)}
 PRODUTOS DO CADASTRO:
 ${JSON.stringify(candidates)}`
 
+  const { parsed, model: used } = await generateJson(prompt, opts)
+  const valid = new Set(candidates.map((c) => c.id))
+  const numbersSent = new Set(items.map((i) => i.itemNumber))
+  // O modelo às vezes embrulha a lista num objeto ({"items": [...]}).
+  const list = Array.isArray(parsed) ? parsed : (Object.values(parsed ?? {}).find(Array.isArray) as any[] | undefined) ?? []
+  const matches = list
+    .filter((m: any) => numbersSent.has(Number(m?.itemNumber)))
+    .map((m: any) => ({
+      itemNumber: Number(m.itemNumber),
+      productId: typeof m.productId === 'string' && valid.has(m.productId) ? m.productId : null,
+      confidence: Math.max(0, Math.min(1, Number(m.confidence) || 0)),
+      reason: String(m.reason ?? '').slice(0, 300),
+    }))
+  return { matches, model: used }
+}
+
+// Chamada genérica ao Gemini pedindo JSON: modelo principal, reservas e novas tentativas.
+export async function generateJson(prompt: string, opts: GeminiOptions): Promise<{ parsed: any; model: string | null }> {
   const request = (model: string) =>
     fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
@@ -96,17 +114,5 @@ ${JSON.stringify(candidates)}`
     logger.error(`Resposta do Gemini não é JSON: ${text.slice(0, 300)}`)
     throw new Error('Resposta inválida do Gemini')
   }
-  const valid = new Set(candidates.map((c) => c.id))
-  const numbersSent = new Set(items.map((i) => i.itemNumber))
-  // O modelo às vezes embrulha a lista num objeto ({"items": [...]}).
-  const list = Array.isArray(parsed) ? parsed : (Object.values(parsed ?? {}).find(Array.isArray) as any[] | undefined) ?? []
-  const matches = list
-    .filter((m: any) => numbersSent.has(Number(m?.itemNumber)))
-    .map((m: any) => ({
-      itemNumber: Number(m.itemNumber),
-      productId: typeof m.productId === 'string' && valid.has(m.productId) ? m.productId : null,
-      confidence: Math.max(0, Math.min(1, Number(m.confidence) || 0)),
-      reason: String(m.reason ?? '').slice(0, 300),
-    }))
-  return { matches, model: used }
+  return { parsed, model: used }
 }

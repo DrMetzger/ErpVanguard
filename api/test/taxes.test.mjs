@@ -56,4 +56,10 @@ r = computeTaxes(ctx({ regime: 'real', rules: [rule({ tax: 'ICMS', cst: '00', uf
 assert.equal(r.items[0].taxes.icms.rate, 12); assert.equal(r.items[0].taxes.pis.value, 14.52)
 ok('regra mais específica vence (UF + NCM 8467 → 12%); Lucro Real PIS 1,65% sobre 880 = 14,52')
 
+r = computeTaxes(ctx({ regime: 'simples', params: { ...params, MV_IBPTPCT: 10 }, ncmEstimate: new Map([['84672100', 31.45]]) }), [item(), item({ key: 'b', ncm: '39269090', amount: 500 })], 30, 150)
+assert.equal(r.items[0].taxes.approx.rate, 31.45); assert.equal(r.items[0].taxes.approx.value, 283.05)
+assert.equal(r.items[1].taxes.approx.rate, 10); assert.equal(r.items[1].taxes.approx.value, 45)
+assert.equal(r.totals.approxTax, 328.05); assert.equal(r.totals.freight, 30); assert.equal(r.totals.total, 1380)
+ok('tributos aproximados (Lei 12.741): % do NCM (31,45% de 900) ou o padrão MV_IBPTPCT (10% de 450); frete é só o informado')
+
 console.log(`\n${passed} verificações de impostos passaram`)

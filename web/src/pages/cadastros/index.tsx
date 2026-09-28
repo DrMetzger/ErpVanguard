@@ -6,6 +6,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { CatalogPage } from '../../components/CatalogPage'
 import { ModuleTabs } from '../../components/ModuleTabs'
 import { FiscalMatrix } from './Fiscal'
+import { NcmAiButton } from './NcmAi'
 import PriceTables from './PriceTables'
 import Products from './Products'
 import { SerasaButton } from './Serasa'
@@ -27,7 +28,7 @@ export default function Cadastros() {
           { path: 'grupos', label: 'Grupos', icon: IconCategory, element: <CatalogPage name="product-groups" /> },
           { path: 'tipos', label: 'Tipos', icon: IconTags, element: <CatalogPage name="product-types" /> },
           { path: 'unidades', label: 'Unidades', icon: IconRuler2, element: <CatalogPage name="units" /> },
-          { path: 'ncm', label: 'NCM', icon: IconBarcode, element: <CatalogPage name="ncm" /> },
+          { path: 'ncm', label: 'NCM', icon: IconBarcode, element: <CatalogPage name="ncm" rowActions={(row, reload) => row.pending ? <NcmAiButton id={row.id} code={String(row.code)} onDone={reload} /> : null} /> },
           { path: 'precos', label: 'Tabelas de preço', icon: IconReceiptTax, element: <PriceTables /> },
         ]} />
       } />

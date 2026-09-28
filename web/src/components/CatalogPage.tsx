@@ -35,7 +35,7 @@ function display(f: FieldDef, row: CatalogRow): ReactNode {
 const LOOKUP = ['customers', 'companies', 'suppliers']
 
 // Tela de cadastro montada a partir da descrição vinda da API.
-export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (row: CatalogRow) => ReactNode }) {
+export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (row: CatalogRow, reload: () => void) => ReactNode }) {
   const meta = useResource(name)
   const user = useUser()
   const [query, setQuery] = useState('')
@@ -76,7 +76,7 @@ export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (
                     {customColumns.map((f) => <Table.Td key={f.key}>{customDisplay(f, (row.custom as Record<string, unknown> | undefined)?.[f.key])}</Table.Td>)}
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        {rowActions?.(row)}
+                        {rowActions?.(row, reload)}
                         {canWrite && <>
                           <Tooltip label="Editar"><ActionIcon variant="subtle" onClick={() => setEditing(row)} aria-label="Editar"><IconEdit size={17} /></ActionIcon></Tooltip>
                           <Tooltip label="Excluir"><ActionIcon variant="subtle" color="red" onClick={() => remove(row)} aria-label="Excluir"><IconTrash size={17} /></ActionIcon></Tooltip>
