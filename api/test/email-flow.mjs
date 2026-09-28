@@ -68,12 +68,12 @@ try {
 
   // Carga: matriz com logo, cliente com nome "perigoso", produto e orçamento
   let companies = (await call(admin, 'GET', '/catalog/companies')).filter((c) => c.active)
-  if (!companies.some((c) => c.isHead)) await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
+  if (!companies.some((c) => c.isHead)) await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
   const head = await call(admin, 'GET', '/companies/branding')
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
   await call(admin, 'PUT', `/companies/${head.id}/logo`, { logo: `data:image/png;base64,${png}` })
   const custName = `Cliente <script>alert(1)</script> & Filhos ${run}`
-  const cust = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: custName, uf: head.uf, taxpayer: '1', ie: IE[head.uf], email: `compras.${run.toLowerCase()}@cliente.test` })
+  const cust = await call(admin, 'POST', '/catalog/customers', { zip: '01001000', document: cnpj(r12()), name: custName, uf: head.uf, taxpayer: '1', ie: IE[head.uf], email: `compras.${run.toLowerCase()}@cliente.test` })
   const prod = await call(admin, 'POST', '/products', { sku: `EM-${run}`, name: 'Serra <circular> 7"', unit: 'UN', costPrice: 100, salePrice: 250, stock: 10 })
   const terms = await call(admin, 'GET', '/catalog/payment-terms')
   const quote = await call(tVend, 'POST', '/sales-quotes', { customerId: cust.id, paymentTermId: terms[0].id, items: [{ productId: prod.id, quantity: 2 }] })

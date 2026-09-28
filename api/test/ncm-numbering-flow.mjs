@@ -73,9 +73,9 @@ try {
   await call(tCad, 'GET', '/sales/readiness', undefined, 403)
   let companies = (await call(admin, 'GET', '/catalog/companies')).filter((c) => c.active)
   if (!companies.some((c) => c.isHead)) {
-    await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
+    await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
   }
-  const branch = await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), document: cnpj(r12()), name: 'Filial ' + run, uf: 'SP', taxRegime: 'simples' })
+  const branch = await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), document: cnpj(r12()), name: 'Filial ' + run, uf: 'SP', taxRegime: 'simples' })
   let ready = await call(tVend, 'GET', `/sales/readiness?companyId=${branch.id}`)
   assert.equal(ready.ready, true, 'faltar IE/endereço não impede o pedido')
   assert.equal(ready.complete, false)
@@ -90,7 +90,7 @@ try {
 
   // 3. Simples Nacional: CSOSN 102 sem destaque, com tributos aproximados (NCM 20%; padrão MV_IBPTPCT)
   await call(admin, 'PUT', '/parameters', { MV_IBPTPCT: 12.5 })
-  const cust = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente NCM ' + run, uf: 'SP', taxpayer: '1', ie: '110042490114' })
+  const cust = await call(admin, 'POST', '/catalog/customers', { zip: '01001000', document: cnpj(r12()), name: 'Cliente NCM ' + run, uf: 'SP', taxpayer: '1', ie: '110042490114' })
   const prodB = await call(tCad, 'POST', '/products', { sku: `NB-${run}`, name: 'Tampa', unit: 'UN', costPrice: 1, salePrice: 40, stock: 50 })
   const terms = await call(admin, 'GET', '/catalog/payment-terms')
   const vista = terms.find((t) => t.days === '0')

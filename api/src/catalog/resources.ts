@@ -57,7 +57,7 @@ export const DRE_LINES = [
 ]
 // Endereço completo: CEP busca o resto; UF antes da cidade (a cidade vem da lista do IBGE).
 const address = (ufRequired = false): FieldDef[] => [
-  { key: 'zip', column: 'zip', label: 'CEP', type: 'zip', help: 'Digite o CEP e o endereço é preenchido' },
+  { key: 'zip', column: 'zip', label: 'CEP', type: 'zip', required: true, help: 'Digite o CEP e o endereço é preenchido' },
   { key: 'uf', column: 'uf', label: 'UF', type: 'uf', required: ufRequired, list: true },
   { key: 'city', column: 'city', label: 'Cidade', type: 'city', max: 100, list: true },
   { key: 'street', column: 'street', label: 'Endereço', type: 'text', max: 200, span: 2 },

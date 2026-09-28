@@ -1,3 +1,4 @@
+import { notifications } from '@mantine/notifications'
 import { ActionIcon, Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { IconEdit, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react'
@@ -140,8 +141,11 @@ function CatalogForm({ meta, custom, row, onClose, onSaved }: { meta: ResourceMe
   // Preenche com os dados da Receita Federal (só campos que existem neste cadastro)
   const lookup = (doc: string) => lookupAction.run(async () => {
     const d = await api<Record<string, unknown>>(`/cnpj/${doc.replace(/\D/g, '')}`)
-    setForm((s) => ({ ...s, ...Object.fromEntries(meta.fields.filter((f) => d[f.key] !== undefined && d[f.key] !== null && d[f.key] !== '' && f.type !== 'document').map((f) => [f.key, d[f.key]])) }))
+    // Troca tudo o que a Receita informa (inclusive o que veio vazio): não sobra dado da empresa anterior.
+    setForm((s) => ({ ...s, ...Object.fromEntries(meta.fields.filter((f) => f.key in d && f.type !== 'document' && !(f.type === 'uf' && !d[f.key]))
+      .map((f) => [f.key, d[f.key] ?? (f.type === 'json' ? null : '')])) }))
     if (d.situation && d.situation !== 'ATIVA') throw new Error(`Atenção: situação na Receita é ${d.situation}`)
+    if (meta.fields.some((f) => f.type === 'ie') && !d.ie) notifications.show({ color: 'yellow', message: 'A Receita não informou a inscrição estadual deste CNPJ: preencha à mão (ou marque Isento).' })
   }, 'Dados da Receita preenchidos')
   // Trocar a UF limpa a cidade (a lista de municípios muda).
   const change = (f: FieldDef, v: unknown) => setForm((s) => (f.type === 'uf' && v !== s[f.key] && meta.fields.some((x) => x.type === 'city') ? { ...s, [f.key]: v, city: '', cityCode: '' } : { ...s, [f.key]: v }))

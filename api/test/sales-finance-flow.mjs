@@ -35,11 +35,11 @@ const tBi = await user('Diretor', ['bi'])
 // Empresa matriz em SP (se ainda não houver)
 let companies = (await call(admin, 'GET', '/catalog/companies')).filter((c) => c.active)
 if (!companies.some((c) => c.isHead)) {
-  await call(admin, 'POST', '/catalog/companies', { code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
+  await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
 }
 const head = (await call(admin, 'GET', '/companies/branding'))
-const custSP = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente SP ' + run, uf: head.uf, taxpayer: '1', ie: IE[head.uf], city: head.uf === 'SP' ? 'Campinas' : undefined })
-const custRJ = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente RJ ' + run, uf: head.uf === 'RJ' ? 'MG' : 'RJ', taxpayer: '1', ie: head.uf === 'RJ' ? IE.MG : IE.RJ })
+const custSP = await call(admin, 'POST', '/catalog/customers', { zip: '01001000', document: cnpj(r12()), name: 'Cliente SP ' + run, uf: head.uf, taxpayer: '1', ie: IE[head.uf], city: head.uf === 'SP' ? 'Campinas' : undefined })
+const custRJ = await call(admin, 'POST', '/catalog/customers', { zip: '01001000', document: cnpj(r12()), name: 'Cliente RJ ' + run, uf: head.uf === 'RJ' ? 'MG' : 'RJ', taxpayer: '1', ie: head.uf === 'RJ' ? IE.MG : IE.RJ })
 const prodA = await call(admin, 'POST', '/products', { sku: `VA-${run}`, name: 'Furadeira 500W', unit: 'UN', costPrice: 120, salePrice: 199.9, stock: 10, minStock: 2 })
 const prodB = await call(admin, 'POST', '/products', { sku: `VB-${run}`, name: 'Broca 8mm', unit: 'UN', costPrice: 4, salePrice: 9.5, stock: 100 })
 const terms = await call(admin, 'GET', '/catalog/payment-terms')
@@ -226,7 +226,7 @@ assert.equal((await call(tFin, 'GET', '/finance/bank-balances')).find((b) => b.i
 ok('devolução de venda (E05/TES 004): estoque volta pelo custo atual, NCC de R$ 210 abate o contas a receber e, ao devolver o dinheiro, sai do banco')
 
 // Devolução de compra: devolvemos 5 brocas ao fornecedor → estoque sai e gera NDF no contas a pagar
-const custFromSup = await call(admin, 'POST', '/catalog/customers', { document: supNf.cnpj, name: supNf.name, uf: head.uf, taxpayer: '1', ie: IE[head.uf] })
+const custFromSup = await call(admin, 'POST', '/catalog/customers', { zip: '01001000', document: supNf.cnpj, name: supNf.name, uf: head.uf, taxpayer: '1', ie: IE[head.uf] })
 const payBefore = (await call(tFin, 'GET', '/finance/summary')).payable
 const ret = await call(tVend, 'POST', '/sales-orders', { customerId: custFromSup.id, operationTypeId: opS03.id, paymentTermId: vista.id, items: [{ productId: prodB.id, quantity: 5, unitPrice: 4 }] })
 assert.equal(ret.items[0].cfop, '5202')
