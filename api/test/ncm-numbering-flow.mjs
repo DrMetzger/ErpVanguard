@@ -82,7 +82,7 @@ try {
   assert.ok(ready.issues.some((i) => i.key === 'ie' && !i.blocking && i.link === '/empresas'))
   assert.ok(ready.issues.some((i) => i.key === 'address'))
   assert.equal(ready.company.regime, 'simples')
-  await call(admin, 'PATCH', `/catalog/companies/${branch.id}`, { ie: '123456789012', zip: '01001000', street: 'Praça da Sé', number: '1', district: 'Sé', city: 'São Paulo' })
+  await call(admin, 'PATCH', `/catalog/companies/${branch.id}`, { ie: '110042490114', zip: '01001000', street: 'Praça da Sé', number: '1', district: 'Sé', city: 'São Paulo' })
   ready = await call(tVend, 'GET', `/sales/readiness?companyId=${branch.id}`)
   assert.deepEqual(ready.issues.filter((i) => i.key !== 'series'), [])
   assert.equal(ready.numbering.series, saved.MV_SERNFE)
@@ -90,7 +90,7 @@ try {
 
   // 3. Simples Nacional: CSOSN 102 sem destaque, com tributos aproximados (NCM 20%; padrão MV_IBPTPCT)
   await call(admin, 'PUT', '/parameters', { MV_IBPTPCT: 12.5 })
-  const cust = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente NCM ' + run, uf: 'SP', taxpayer: '1' })
+  const cust = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: 'Cliente NCM ' + run, uf: 'SP', taxpayer: '1', ie: '110042490114' })
   const prodB = await call(tCad, 'POST', '/products', { sku: `NB-${run}`, name: 'Tampa', unit: 'UN', costPrice: 1, salePrice: 40, stock: 50 })
   const terms = await call(admin, 'GET', '/catalog/payment-terms')
   const vista = terms.find((t) => t.days === '0')
