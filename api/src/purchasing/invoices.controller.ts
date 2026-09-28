@@ -14,6 +14,7 @@ import { matchWithGemini } from './gemini'
 import { parseNfe } from './nfe'
 import { code, found } from './purchasing.helpers'
 import { resolveFiscal } from '../catalog/fiscal'
+import { checkCostCenter } from '../finance/cost-centers'
 import { categoryByCode, createTitles, round2, today } from '../finance/finance.logic'
 import { similarity } from './similarity'
 
@@ -32,6 +33,8 @@ class UpdateInvoiceDto {
   @IsOptional() @IsUUID() purchaseOrderId?: string | null
   // Classificação fiscal: tipo de operação da nota (troca a TES sugerida de todos os itens)
   @IsOptional() @IsUUID() operationTypeId?: string
+  // Centro de custo da nota (vai para os títulos e movimentos de estoque); null tira
+  @IsOptional() @IsUUID() costCenterId?: string | null
   @IsArray() @ValidateNested({ each: true }) @Type(() => ItemMatchDto) items: ItemMatchDto[]
 }
 
@@ -144,6 +147,9 @@ export class InvoicesController {
         if (op.kind !== 'E') throw new BadRequestException('Use um tipo de operação de entrada')
         await tx.query(`UPDATE invoices SET operation_type_id = $2 WHERE id = $1`, [id, dto.operationTypeId])
         await tx.query(`UPDATE invoice_items SET tes_id = NULL, entry_cfop = NULL WHERE invoice_id = $1`, [id])
+      }
+      if (dto.costCenterId !== undefined) {
+        await tx.query(`UPDATE invoices SET cost_center_id = $2 WHERE id = $1`, [id, await checkCostCenter(tx, dto.costCenterId)])
       }
       for (const item of dto.items) {
         const sets: string[] = []
@@ -264,16 +270,16 @@ export class InvoicesController {
             // Devolução de venda: a mercadoria volta pelo custo médio atual (não mexe no custo).
             await tx.query(`UPDATE products SET stock = stock + $2, updated_at = now() WHERE id = $1`, [item.product_id, qty])
             await tx.query(
-              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'devolucao_venda', $4, $5)`,
-              [item.product_id, qty, cost, reference, me.id],
+              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id, cost_center_id) VALUES ($1, $2, $3, 'devolucao_venda', $4, $5, $6)`,
+              [item.product_id, qty, cost, reference, me.id, invoice.cost_center_id],
             )
           } else {
             const unitCost = qty > 0 ? Number(item.total) / qty : Number(item.unit_price)
             const newCost = stock > 0 ? (stock * cost + qty * unitCost) / (stock + qty) : unitCost
             await tx.query(`UPDATE products SET stock = stock + $2, cost_price = $3, updated_at = now() WHERE id = $1`, [item.product_id, qty, newCost])
             await tx.query(
-              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'entrada_nf', $4, $5)`,
-              [item.product_id, qty, unitCost, reference, me.id],
+              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id, cost_center_id) VALUES ($1, $2, $3, 'entrada_nf', $4, $5, $6)`,
+              [item.product_id, qty, unitCost, reference, me.id, invoice.cost_center_id],
             )
           }
         }
@@ -313,13 +319,13 @@ export class InvoicesController {
           await createTitles(tx, {
             kind: 'R', docType: 'NCC', companyId: company?.id ?? null, customerId, categoryId: await categoryByCode(tx, '2.08'),
             description: `Crédito de devolução ${reference}`, document: reference, issueDate, parcels: [{ dueDate: issueDate, amount }],
-            invoiceId: id, userId: me.id, notes: 'NCC: crédito do cliente. Abate o que ele deve ou é devolvido em dinheiro.',
+            invoiceId: id, userId: me.id, costCenterId: invoice.cost_center_id, notes: 'NCC: crédito do cliente. Abate o que ele deve ou é devolvido em dinheiro.',
           })
         } else {
           const useDuplicates = nfe.duplicates.length > 0 && Math.abs(financialItems - itemsTotal) < 0.005
           await createTitles(tx, {
             kind: 'P', docType: 'NF', companyId: company?.id ?? null, supplierId: invoice.supplier_id, categoryId: await categoryByCode(tx, '2.01'),
-            description: `Compra ${reference}`, document: reference, issueDate, invoiceId: id, userId: me.id,
+            description: `Compra ${reference}`, document: reference, issueDate, invoiceId: id, userId: me.id, costCenterId: invoice.cost_center_id,
             parcels: useDuplicates ? nfe.duplicates.map((d) => ({ dueDate: d.dueDate, amount: round2(d.amount) })) : [{ dueDate: issueDate, amount }],
             notes: useDuplicates ? null : 'Sem duplicatas aplicáveis no XML: confira o vencimento',
           })
@@ -468,7 +474,8 @@ export class InvoicesController {
                 s.name AS "supplierName", s.cnpj AS "supplierCnpj", i.purchase_order_id AS "purchaseOrderId",
                 o.number AS "orderNumber", o.status AS "orderStatus", i.recipient_document AS "recipientDocument",
                 i.operation_type_id AS "operationTypeId", ot.code || ' · ' || ot.name AS "operationLabel", coalesce(ot.is_return, false) AS "isReturn",
-                cu.name AS "customerName", cb.name AS "classifiedBy",
+                cu.name AS "customerName", cb.name AS "classifiedBy", i.cost_center_id AS "costCenterId",
+                (SELECT code || ' · ' || name FROM cost_centers WHERE id = i.cost_center_id) AS "costCenter",
                 (SELECT code || ' · ' || coalesce(trade_name, name) FROM companies c WHERE c.document = i.recipient_document) AS "companyLabel"
          FROM invoices i JOIN suppliers s ON s.id = i.supplier_id LEFT JOIN purchase_orders o ON o.id = i.purchase_order_id
          LEFT JOIN operation_types ot ON ot.id = i.operation_type_id LEFT JOIN customers cu ON cu.id = i.customer_id LEFT JOIN users cb ON cb.id = i.classified_by

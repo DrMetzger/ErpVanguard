@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm'
 import { resolveFiscal, type FiscalResult } from '../catalog/fiscal'
 import { can } from '../common/access'
 import { numbers, one, type Db } from '../common/db'
+import { checkCostCenter } from '../finance/cost-centers'
 import { round2 } from '../finance/finance.logic'
 import { ParametersService } from '../params/parameters.service'
 import { code, found } from '../purchasing/purchasing.helpers'
@@ -30,6 +31,7 @@ export class SalesDocDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) freight?: number
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) discount?: number
   @IsOptional() @IsString() @MaxLength(2000) notes?: string
+  @IsOptional() @IsUUID() costCenterId?: string
   @IsArray() @ArrayMinSize(1, { message: 'Inclua ao menos um item' }) @ArrayMaxSize(300) @ValidateNested({ each: true }) @Type(() => ItemDto) items: ItemDto[]
 }
 
@@ -127,6 +129,8 @@ export class SalesDocsService {
       [id, prep.companyId, prep.customer.id, prep.operation.id, prep.paymentTermId, prep.priceTableId, dto.validUntil ?? null,
         prep.freight, prep.discount, prep.totals.total, JSON.stringify(prep.totals), dto.notes?.trim() || null],
     )
+    // Centro de custo: vai para a nota e para os títulos ao faturar.
+    await tx.query(`UPDATE ${d.table} SET cost_center_id = $2 WHERE id = $1`, [id, await checkCostCenter(tx, dto.costCenterId)])
     return prep
   }
 
@@ -138,7 +142,7 @@ export class SalesDocsService {
     return {
       companyId: h.company_id, customerId: h.customer_id, operationTypeId: h.operation_type_id, paymentTermId: h.payment_term_id,
       priceTableId: h.price_table_id ?? undefined, validUntil: h.valid_until ? new Date(h.valid_until).toISOString().slice(0, 10) : undefined,
-      freight: Number(h.freight), discount: Number(h.discount), notes: h.notes ?? undefined,
+      freight: Number(h.freight), discount: Number(h.discount), notes: h.notes ?? undefined, costCenterId: h.cost_center_id ?? undefined,
       items: items.map((i: any) => ({ productId: i.product_id, quantity: Number(i.quantity), unitPrice: Number(i.unit_price), discountPct: Number(i.discount_pct) })),
     }
   }
@@ -151,7 +155,8 @@ export class SalesDocsService {
               o.company_id AS "companyId", co.code || ' · ' || coalesce(co.trade_name, co.name) AS "companyLabel", co.uf AS "companyUf", co.tax_regime AS "taxRegime",
               o.customer_id AS "customerId", c.name AS "customerName", c.document AS "customerDocument", c.uf AS "customerUf", c.taxpayer AS "customerTaxpayer",
               o.seller_id AS "sellerId", u.name AS "sellerName", o.operation_type_id AS "operationTypeId", ot.code || ' · ' || ot.name AS "operationLabel",
-              o.payment_term_id AS "paymentTermId", pt.name AS "paymentTerm", pt.days AS "paymentDays", o.price_table_id AS "priceTableId", tb.name AS "priceTable"
+              o.payment_term_id AS "paymentTermId", pt.name AS "paymentTerm", pt.days AS "paymentDays", o.price_table_id AS "priceTableId", tb.name AS "priceTable",
+              o.cost_center_id AS "costCenterId", (SELECT code || ' · ' || name FROM cost_centers WHERE id = o.cost_center_id) AS "costCenter"
               ${kind === 'quote' ? `, o.lost_reason AS "lostReason", o.closed_at AS "closedAt", (SELECT id FROM sales_orders WHERE quote_id = o.id LIMIT 1) AS "orderId",
                  (SELECT number FROM sales_orders WHERE quote_id = o.id LIMIT 1) AS "orderNumber"`
                 : `, o.quote_id AS "quoteId", (SELECT number FROM sales_quotes WHERE id = o.quote_id) AS "quoteNumber"`}

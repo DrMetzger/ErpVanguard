@@ -132,9 +132,9 @@ export class SalesController {
       const [{ next }] = await tx.query(`SELECT coalesce(max(number), 0) + 1 AS next FROM sales_invoices WHERE company_id = $1 AND series = 1`, [order.company_id])
       const invoice = (await one(
         tx,
-        `INSERT INTO sales_invoices (company_id, number, order_id, customer_id, operation_type_id, products_total, freight, discount, total, taxes, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, number`,
-        [order.company_id, next, id, order.customer_id, order.operation_type_id, prep.totals.products, prep.freight, prep.discount, prep.totals.total, JSON.stringify(prep.totals), me.id],
+        `INSERT INTO sales_invoices (company_id, number, order_id, customer_id, operation_type_id, products_total, freight, discount, total, taxes, created_by, cost_center_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, number`,
+        [order.company_id, next, id, order.customer_id, order.operation_type_id, prep.totals.products, prep.freight, prep.discount, prep.totals.total, JSON.stringify(prep.totals), me.id, order.cost_center_id],
       ))!
       const reference = `NF ${invoice.number}/1`
       for (const [n, l] of prep.lines.entries()) {
@@ -147,8 +147,8 @@ export class SalesController {
         if (r.updatesStock) {
           await tx.query(`UPDATE products SET stock = stock - $2, updated_at = now() WHERE id = $1`, [l.productId, l.quantity])
           await tx.query(
-            `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id) VALUES ($1, $2, $3, 'saida_nf', $4, $5)`,
-            [l.productId, -l.quantity, l.costPrice, reference, me.id],
+            `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id, cost_center_id) VALUES ($1, $2, $3, 'saida_nf', $4, $5, $6)`,
+            [l.productId, -l.quantity, l.costPrice, reference, me.id, order.cost_center_id],
           )
         }
       }
@@ -161,7 +161,7 @@ export class SalesController {
         await createTitles(tx, {
           kind: 'P', docType: 'NDF', companyId: order.company_id, supplierId: await this.supplierFromCustomer(tx, order.customer_id),
           categoryId: await categoryByCode(tx, '1.04'), description: `Débito de devolução ${reference} · ${customer.name}`, document: reference,
-          issueDate: today(), parcels: [{ amount: receivable, dueDate: today() }], salesInvoiceId: invoice.id, userId: me.id,
+          issueDate: today(), parcels: [{ amount: receivable, dueDate: today() }], salesInvoiceId: invoice.id, userId: me.id, costCenterId: order.cost_center_id,
           notes: 'NDF: débito do fornecedor. Abate o que você deve a ele ou é recebido em dinheiro.',
         })
       } else if (receivable > 0) {
@@ -173,6 +173,7 @@ export class SalesController {
           kind: 'R', docType: 'NF', companyId: order.company_id, customerId: order.customer_id, categoryId: await categoryByCode(tx, '1.01'),
           description: `Venda ${reference} · ${customer.name}`, document: reference, issueDate: issue,
           parcels: amounts.map((amount, i) => ({ amount, dueDate: addDays(issue, days[i] ?? 0) })), salesInvoiceId: invoice.id, userId: me.id,
+          costCenterId: order.cost_center_id,
         })
       }
       await tx.query(`UPDATE sales_orders SET status = 'faturado', updated_at = now() WHERE id = $1`, [id])
@@ -256,6 +257,7 @@ export class SalesController {
       `SELECT i.id, i.number, i.series, i.issued_at AS "issuedAt", i.products_total AS "productsTotal", i.freight, i.discount, i.total, i.status,
               i.sefaz_status AS "sefazStatus", i.cancel_reason AS "cancelReason", i.order_id AS "orderId", o.number AS "orderNumber", i.taxes,
               ot.code || ' · ' || ot.name AS "operationLabel", i.company_id AS "companyId",
+              i.cost_center_id AS "costCenterId", (SELECT code || ' · ' || name FROM cost_centers WHERE id = i.cost_center_id) AS "costCenter",
               c.name AS "customerName", c.document AS "customerDocument", c.ie AS "customerIe", c.street AS "customerStreet", c.number AS "customerNumber",
               c.district AS "customerDistrict", c.city AS "customerCity", c.uf AS "customerUf", c.zip AS "customerZip"
        FROM sales_invoices i JOIN customers c ON c.id = i.customer_id JOIN operation_types ot ON ot.id = i.operation_type_id LEFT JOIN sales_orders o ON o.id = i.order_id

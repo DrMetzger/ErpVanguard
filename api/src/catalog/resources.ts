@@ -48,7 +48,12 @@ export const REGIMES = [
 ]
 const TAXES = [{ value: 'ICMS', label: 'ICMS' }, { value: 'ICMS_ST', label: 'ICMS-ST (substituição tributária)' }, { value: 'IPI', label: 'IPI' }, { value: 'PIS', label: 'PIS' }, { value: 'COFINS', label: 'COFINS' }]
 const TAXPAYER = [{ value: '1', label: 'Contribuinte de ICMS' }, { value: '2', label: 'Contribuinte isento' }, { value: '9', label: 'Não contribuinte' }]
-const active: FieldDef = { key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true, list: true }
+export const DRE_LINES = [
+  { value: 'receita', label: 'Receita bruta' }, { value: 'deducao', label: '(−) Deduções e impostos sobre vendas' }, { value: 'cmv', label: '(−) CMV / CPV' },
+  { value: 'desp_adm', label: '(−) Despesas administrativas' }, { value: 'desp_com', label: '(−) Despesas comerciais' }, { value: 'desp_fin', label: '(−) Despesas financeiras (líquidas)' },
+  { value: 'outras', label: 'Outras receitas e despesas' }, { value: 'ir_csll', label: '(−) IR e CSLL' }, { value: 'fora', label: 'Fora da DRE' },
+]
+const active: FieldDef ={ key: 'active', column: 'active', label: 'Ativo', type: 'bool', default: true, list: true }
 
 // Tabelas que podem ser referenciadas (inclusive as que têm tela própria).
 export const REF_TARGETS: Record<string, { table: string; labelExpr: string; search: string[] }> = {
@@ -275,6 +280,19 @@ export const RESOURCES: ResourceDef[] = [
       { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 10, pattern: '^[\\d.]{1,10}$', patternMessage: 'Números e pontos, ex.: 2.08', list: true },
       { key: 'name', column: 'name', label: 'Nome', type: 'text', required: true, max: 100, list: true, span: 2 },
       { key: 'kind', column: 'kind', label: 'Tipo', type: 'enum', options: [{ value: 'R', label: 'Receita' }, { value: 'D', label: 'Despesa' }], required: true, list: true },
+      { key: 'dreLine', column: 'dre_line', label: 'Linha da DRE', type: 'enum', options: DRE_LINES, list: true, span: 2, help: 'Natureza financeira: onde os títulos desta conta entram na DRE. Vazio ou "Fora da DRE" não entra' },
+      active,
+    ],
+  },
+  {
+    name: 'cost-centers', module: 'financeiro', title: 'Centros de custo', singular: 'centro de custo', description: 'Separa receitas e despesas por área. Só o analítico recebe lançamentos; o sintético agrupa os filhos nos relatórios.',
+    table: 'cost_centers', labelExpr: "code || ' · ' || name", search: ['code', 'name'], order: 'code', write: ['financeiro'],
+    constraints: { cost_centers_code_key: 'Já existe um centro de custo com este código', cost_centers_check: 'O centro de custo não pode ser pai dele mesmo' },
+    fields: [
+      { key: 'code', column: 'code', label: 'Código', type: 'text', required: true, max: 20, pattern: '^[\\d.]{1,20}$', patternMessage: 'Números e pontos, ex.: 02.01', list: true },
+      { key: 'name', column: 'name', label: 'Nome', type: 'text', required: true, max: 120, list: true, span: 2 },
+      { key: 'type', column: 'type', label: 'Tipo', type: 'enum', options: [{ value: 'A', label: 'Analítico (recebe lançamentos)' }, { value: 'S', label: 'Sintético (agrupa)' }], required: true, default: 'A', list: true },
+      { key: 'parentId', column: 'parent_id', label: 'Centro superior', type: 'ref', ref: 'cost-centers', list: true, span: 2, help: 'Use um centro sintético' },
       active,
     ],
   },
