@@ -1,5 +1,6 @@
-import { Button, Center, Paper, PasswordInput, Stack, Text, TextInput } from '@mantine/core'
-import { IconAt, IconLock } from '@tabler/icons-react'
+import { Capacitor } from '@capacitor/core'
+import { Button, Center, Group, Paper, PasswordInput, Stack, Text, TextInput, ThemeIcon } from '@mantine/core'
+import { IconAt, IconLock, IconBrandAndroid, IconDownload } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../lib/auth'
@@ -26,7 +27,8 @@ export default function Login() {
 
   return (
     <Center className="login-bg" p="md">
-      <Paper component="form" onSubmit={submit} withBorder shadow="xl" p={36} w="100%" maw={400}>
+      <Stack w="100%" maw={400} gap="md">
+      <Paper component="form" onSubmit={submit} withBorder shadow="xl" p={36} w="100%">
         <Stack gap="md">
           <Center mb="xs"><Logo size={42} /></Center>
           <Text c="dimmed" size="sm" ta="center" mb="xs">Entre para acessar sua empresa</Text>
@@ -35,6 +37,20 @@ export default function Login() {
           <Button type="submit" size="md" variant="gradient" loading={busy} fullWidth mt="xs">Entrar</Button>
         </Stack>
       </Paper>
+      {/* No navegador: convite para instalar o app Android (dentro do app não aparece). */}
+      {!Capacitor.isNativePlatform() && (
+        <Paper withBorder p="sm" radius="md" component="a" href="/download/" style={{ textDecoration: 'none' }} aria-label="Baixar o app Android">
+          <Group gap="sm" wrap="nowrap">
+            <ThemeIcon size={38} radius="md" variant="light" color="teal"><IconBrandAndroid size={22} /></ThemeIcon>
+            <div style={{ flex: 1 }}>
+              <Text size="sm" fw={600} c="var(--mantine-color-text)">Baixe o app ERP Vanguard para Android</Text>
+              <Text size="xs" c="dimmed">Use no celular, até sem internet</Text>
+            </div>
+            <IconDownload size={18} />
+          </Group>
+        </Paper>
+      )}
+      </Stack>
     </Center>
   )
 }

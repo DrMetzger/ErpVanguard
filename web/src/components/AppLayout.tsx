@@ -1,8 +1,9 @@
+import { Capacitor } from '@capacitor/core'
 import {
   ActionIcon, AppShell, Box, Burger, Divider, Group, NavLink, ScrollArea, Stack, Text, Tooltip, UnstyledButton, useComputedColorScheme, useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure, useLocalStorage, useMediaQuery } from '@mantine/hooks'
-import { IconAdjustments, IconBuilding, IconDeviceMobile, IconDoorExit, IconForms, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMailCog, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
+import { IconAdjustments, IconBrandAndroid, IconBuilding, IconDeviceMobile, IconDoorExit, IconForms, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMailCog, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ScreenGuard } from './ScreenGuard'
 import { OfflineBar } from './OfflineBar'
@@ -101,6 +102,13 @@ export default function AppLayout() {
                 {scheme === 'dark' ? <IconSun size={18} stroke={1.7} /> : <IconMoon size={18} stroke={1.7} />}
               </ActionIcon>
             </Tooltip>
+            {!Capacitor.isNativePlatform() && (
+              <Tooltip label="Baixar o app Android">
+                <ActionIcon component="a" href="/download/" target="_blank" variant="default" size="lg" radius="xl" aria-label="Baixar o app Android">
+                  <IconBrandAndroid size={18} stroke={1.7} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <NotificationsBell />
             <Divider orientation="vertical" my={14} visibleFrom="xs" />
             <Tooltip label="Meu perfil">
