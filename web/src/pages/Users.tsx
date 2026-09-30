@@ -12,7 +12,7 @@ const PERMS: [Permission, string, string][] = [
   ['solicitante', 'Solicitante', 'Abre solicitações de compra'],
   ['comprador', 'Comprador', 'Cotações, pedidos, fornecedores e notas'],
   ['aprovador', 'Aprovador', 'Aprova pedidos na sua alçada'],
-  ['cadastro', 'Cadastros', 'Produtos, clientes, grupos, unidades, NCM, tabelas de preço'],
+  ['cadastro', 'Cadastros', 'Inclui e altera produtos, clientes, grupos, unidades, NCM e tabelas de preço (sem ele, só consulta). Empresa pequena: marque junto com Faturamento'],
   ['fiscal', 'Fiscal', 'CFOP, TES, tipos de operação e matriz fiscal'],
   ['vendedor', 'Vendedor', 'Orçamentos e pedidos de venda (só os próprios)'],
   ['faturamento', 'Faturamento', 'Todos os pedidos, emite e cancela notas de saída'],

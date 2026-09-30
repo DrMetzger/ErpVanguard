@@ -14,7 +14,10 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, ILike, QueryFailedError, Repository } from 'typeorm'
+import { CurrentUser } from '../auth/current-user.decorator'
 import { ensureNcm } from '../catalog/ncm'
+import { requirePermission } from '../common/access'
+import type { User } from '../users/user.entity'
 import { CustomFieldsService } from '../custom/custom-fields.service'
 import { SettingsService } from '../settings/settings.service'
 import { CreateProductDto, UpdateProductDto } from './product.dto'
@@ -56,14 +59,18 @@ export class ProductsController {
     return product
   }
 
+  // Incluir, alterar e excluir: perfil "Cadastros" (Administração › Usuários). Em empresa pequena,
+  // o mesmo usuário pode ter Cadastros e Faturamento marcados.
   @Post()
-  async create(@Body() dto: CreateProductDto) {
+  async create(@CurrentUser() me: User, @Body() dto: CreateProductDto) {
+    requirePermission(me, 'cadastro')
     const custom = await this.custom.validate('products', dto.custom, {}, true)
     return this.save(this.products.create({ ...dto, custom }))
   }
 
   @Patch(':id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProductDto) {
+  async update(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProductDto) {
+    requirePermission(me, 'cadastro')
     const product = await this.get(id)
     const custom = await this.custom.validate('products', dto.custom, product.custom ?? {})
     return this.save(this.products.merge(product, { ...dto, custom: custom ?? product.custom }))
@@ -71,7 +78,8 @@ export class ProductsController {
 
   @Delete(':id')
   @HttpCode(204)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(@CurrentUser() me: User, @Param('id', ParseUUIDPipe) id: string) {
+    requirePermission(me, 'cadastro')
     const files: { storage_key: string }[] = await this.products.query(`SELECT storage_key FROM product_videos WHERE product_id = $1 AND kind = 'file'`, [id])
     const { affected } = await this.products.delete({ id })
     for (const f of files) removeVideoFile(f.storage_key)

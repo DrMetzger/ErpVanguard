@@ -63,6 +63,20 @@ const listed = (await call(tSol, 'GET', `/products?q=PRD-${run}`))[0]
 assert.equal(listed.groupLabel, `${group.code} · Ferragens`)
 ok('produto ligado a tipo e grupo')
 
+// Produto: só quem tem o perfil Cadastros inclui/altera/exclui; empresa pequena marca Cadastros + Faturamento no mesmo usuário
+const fat = await call(admin, 'POST', '/users', { name: 'Fat ' + run, email: `fatp.${run}@t.com`.toLowerCase(), password: pass, permissions: ['faturamento'] })
+const tFat = (await call(null, 'POST', '/auth/login', { email: fat.email, password: pass })).token
+await call(tFat, 'POST', '/products', { sku: 'FAT-' + run, name: 'Sem perfil', unit: 'UN' }, 403)
+await call(tFat, 'PATCH', `/products/${prod.id}`, { salePrice: 1 }, 403)
+await call(tFat, 'DELETE', `/products/${prod.id}`, undefined, 403)
+assert.equal((await call(tFat, 'GET', `/products/${prod.id}`)).sku, 'PRD-' + run, 'sem o perfil, consulta')
+const both = await call(admin, 'POST', '/users', { name: 'Tudo ' + run, email: `tudo.${run}@t.com`.toLowerCase(), password: pass, permissions: ['cadastro', 'faturamento'] })
+const tBoth = (await call(null, 'POST', '/auth/login', { email: both.email, password: pass })).token
+const pb = await call(tBoth, 'POST', '/products', { sku: 'TUDO-' + run, name: 'Cadastro e faturamento', unit: 'UN' })
+await call(tBoth, 'PATCH', `/products/${pb.id}`, { salePrice: 9.9 })
+await call(tBoth, 'DELETE', `/products/${pb.id}`)
+ok('produto: sem o perfil Cadastros só consulta (403 ao incluir/alterar/excluir); Cadastros + Faturamento no mesmo usuário funciona')
+
 const pt = await call(tCad, 'POST', '/catalog/price-tables', { code: 'VAR' + run.slice(-3), name: 'Varejo', validFrom: '2026-01-01' })
 await call(tCad, 'PUT', `/catalog/price-tables/${pt.id}/items`, { items: [{ productId: prod.id, price: 3.9 }] })
 const items = await call(tSol, 'GET', `/catalog/price-tables/${pt.id}/items`)

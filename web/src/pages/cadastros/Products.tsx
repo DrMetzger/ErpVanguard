@@ -1,8 +1,8 @@
 import { SheetMenu } from '../../components/SheetMenu'
 import { useUser } from '../../lib/auth'
-import { ActionIcon, Autocomplete, Avatar, Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
+import { ActionIcon, Alert, Autocomplete, Avatar, Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
-import { IconEdit, IconPhoto, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react'
+import { IconEdit, IconEye, IconPhoto, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { BrNumber, Money } from '../../components/inputs'
 import { Empty, ErrorText, Loading, PageHeader } from '../../components/ui'
@@ -24,6 +24,8 @@ const ORIGINS = [
 
 export default function Products() {
   const user = useUser()
+  // Incluir/alterar/excluir: perfil Cadastros (Administração › Usuários); os outros só consultam
+  const canWrite = user.role === 'admin' || user.permissions.includes('cadastro')
   const [query, setQuery] = useState('')
   const [q] = useDebouncedValue(query.trim(), 250)
   const { data, error, loading, reload } = useApi<Product[]>(`/products${q ? `?q=${encodeURIComponent(q)}` : ''}`)
@@ -38,7 +40,7 @@ export default function Products() {
 
   return (
     <>
-      <PageHeader title={<Text fw={700} size="lg">Produtos</Text>} description="Cadastro de produtos: código, tipo, grupo, unidade, NCM e preços." actions={<Group gap="xs"><SheetMenu name="products" title="Produtos" canWrite={user.role === 'admin' || user.permissions.includes('cadastro')} onImported={reload} /><Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo produto</Button></Group>} />
+      <PageHeader title={<Text fw={700} size="lg">Produtos</Text>} description="Cadastro de produtos: código, tipo, grupo, unidade, NCM e preços." actions={<Group gap="xs"><SheetMenu name="products" title="Produtos" canWrite={canWrite} onImported={reload} />{canWrite && <Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo produto</Button>}</Group>} />
       <TextInput placeholder="Buscar por nome ou código" leftSection={<IconSearch size={16} />} value={query} onChange={(e) => setQuery(e.currentTarget.value)} maw={420} mb="md" />
       <ErrorText error={error} />
       <Card p={0}>
@@ -62,8 +64,8 @@ export default function Products() {
                     {cols.map((f) => <Table.Td key={f.key}>{customDisplay(f, p.custom?.[f.key])}</Table.Td>)}
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        <Tooltip label="Editar"><ActionIcon variant="subtle" onClick={() => setEditing(p)} aria-label="Editar"><IconEdit size={17} /></ActionIcon></Tooltip>
-                        <Tooltip label="Excluir"><ActionIcon variant="subtle" color="red" onClick={() => remove(p)} aria-label="Excluir"><IconTrash size={17} /></ActionIcon></Tooltip>
+                        <Tooltip label={canWrite ? 'Editar' : 'Ver'}><ActionIcon variant="subtle" onClick={() => setEditing(p)} aria-label={canWrite ? 'Editar' : 'Ver'}>{canWrite ? <IconEdit size={17} /> : <IconEye size={17} />}</ActionIcon></Tooltip>
+                        {canWrite && <Tooltip label="Excluir"><ActionIcon variant="subtle" color="red" onClick={() => remove(p)} aria-label="Excluir"><IconTrash size={17} /></ActionIcon></Tooltip>}
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -74,12 +76,12 @@ export default function Products() {
         )}
         {data?.length === 0 && <Empty>{q ? 'Nenhum produto encontrado.' : 'Nenhum produto cadastrado ainda. Clique em "Novo produto".'}</Empty>}
       </Card>
-      {editing && <ProductForm custom={custom} product={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
+      {editing && <ProductForm readOnly={!canWrite} custom={custom} product={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </>
   )
 }
 
-function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<Product>; custom: Customization | null; onClose: () => void; onSaved: () => void }) {
+function ProductForm({ product, custom, onClose, onSaved, readOnly = false }: { product: Partial<Product>; custom: Customization | null; onClose: () => void; onSaved: () => void; readOnly?: boolean }) {
   const L = layoutHelpers(custom?.layout)
   const [extra, setExtra] = useState<Record<string, unknown>>(() => ({ ...(product.custom ?? {}) }))
   const [pending, setPending] = useState<PendingPhoto[]>([])
@@ -119,8 +121,10 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
   }
 
   return (
-    <Modal opened onClose={photosChanged ? onSaved : onClose} title={isNew ? 'Novo produto' : 'Editar produto'} size="xl" closeOnEscape={false}>
+    <Modal opened onClose={photosChanged ? onSaved : onClose} title={isNew ? 'Novo produto' : readOnly ? 'Produto' : 'Editar produto'} size="xl" closeOnEscape={false}>
       <Stack component="form" onSubmit={submit}>
+        {readOnly && <Alert color="blue" variant="light">Só consulta: seu usuário não tem o perfil Cadastros. O administrador libera em Administração › Usuários.</Alert>}
+        <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--mantine-spacing-md)' }}>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <TextInput label={L.label('sku', 'Código (SKU)')} style={{ order: L.order('sku') }} required data-autofocus value={form.sku} onChange={(e) => set('sku', e.currentTarget.value)} />
           <TextInput label={L.label('name', 'Descrição')} required value={form.name} onChange={(e) => set('name', e.currentTarget.value)} style={{ gridColumn: 'span 2', order: L.order('name') }} />
@@ -142,7 +146,8 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
         <ProductVideos productId={product.id} />
         <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
         {!isNew && <Switch label="Produto ativo" checked={form.active} onChange={(e) => set('active', e.currentTarget.checked)} />}
-        <Group justify="flex-end"><Button variant="default" onClick={photosChanged ? onSaved : onClose}>{photosChanged ? 'Fechar' : 'Cancelar'}</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
+        </fieldset>
+        <Group justify="flex-end"><Button variant="default" onClick={photosChanged ? onSaved : onClose}>{photosChanged || readOnly ? 'Fechar' : 'Cancelar'}</Button>{!readOnly && <Button type="submit" loading={busy}>Salvar</Button>}</Group>
       </Stack>
     </Modal>
   )
