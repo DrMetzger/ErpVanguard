@@ -8,4 +8,6 @@ RUN npm run build
 # Caddy serve o front, faz proxy de /api para a API e cuida do HTTPS.
 FROM caddy:2-alpine
 COPY --from=build /app/dist /srv
+# Painel da Prime ERP (admin.erpvanguard.com.br): por enquanto só a página inicial
+COPY admin-site /srv-admin
 COPY Caddyfile /etc/caddy/Caddyfile

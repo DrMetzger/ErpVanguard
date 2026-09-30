@@ -61,6 +61,35 @@ jobs:
           EOF
           echo "Configuração do Gemini atualizada no servidor"
 
+      - name: Sync e-mail (SMTP) secrets
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+        run: |
+          # Só informa QUAIS existem (nunca os valores).
+          for k in SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASS SMTP_FROM; do
+            if [ -n "${!k}" ]; then echo "$k: cadastrado"; else echo "$k: não cadastrado"; fi
+          done
+          if [ -z "$SMTP_HOST" ]; then echo "Sem SMTP_HOST nos secrets: vale a configuração da tela (Administração › Configurações)"; exit 0; fi
+          # Valores em base64 dentro do script enviado pelo stdin do SSH: não aparecem em linha de comando nem no log.
+          b() { printf %s "$1" | base64 -w0; }
+          ssh "$VPS_USER@$VPS_HOST" "sudo bash -s" <<EOF
+          set -e
+          umask 077
+          f=$APP_DIR/.env
+          touch \$f
+          put() { sed -i "/^\$1=/d" \$f; [ -n "\$2" ] && echo "\$1=\$(echo \$2 | base64 -d)" >> \$f || true; }
+          put SMTP_HOST "$(b "$SMTP_HOST")"
+          put SMTP_PORT "$(b "$SMTP_PORT")"
+          put SMTP_USER "$(b "$SMTP_USER")"
+          put SMTP_PASS "$(b "$SMTP_PASS")"
+          put SMTP_FROM "$(b "$SMTP_FROM")"
+          EOF
+          echo "Configuração de e-mail atualizada no servidor"
+
       - name: Build and start
         run: |
           ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR APP_DOMAIN=$APP_DOMAIN bash -s" <<'REMOTE'
@@ -110,3 +139,17 @@ jobs:
           done
           echo "::warning::API está rodando na VPS, mas https://$APP_DOMAIN ainda não respondeu (DNS ou certificado)"
           ssh "$VPS_USER@$VPS_HOST" "cd $APP_DIR/app/infra && sudo docker compose --env-file $APP_DIR/.env logs --tail 40 web" || true
+
+      - name: Check admin URL
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 -o /dev/null "https://admin.erpvanguard.com.br/"; then echo "Painel no ar com HTTPS: https://admin.erpvanguard.com.br"; exit 0; fi
+            sleep 6
+          done
+          echo "::warning::https://admin.erpvanguard.com.br ainda não respondeu (DNS propagando ou certificado)"
+          ssh "$VPS_USER@$VPS_HOST" "cd $APP_DIR/app/infra && sudo docker compose --env-file $APP_DIR/.env logs --tail 40 web" | grep -i "admin\|error" || true
+
+      - name: Check e-mail (SMTP)
+        run: |
+          # Conecta e faz login no SMTP, sem enviar e-mail; a senha nunca aparece.
+          ssh "$VPS_USER@$VPS_HOST" "cd $APP_DIR/app/infra && sudo docker compose --env-file $APP_DIR/.env exec -T api node dist/tools/smtp-check.js" || true

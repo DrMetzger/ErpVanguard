@@ -47,6 +47,7 @@ services:
     restart: unless-stopped
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.erpvanguard.com.br}
     ports:
       - "80:80"
       - "443:443"
