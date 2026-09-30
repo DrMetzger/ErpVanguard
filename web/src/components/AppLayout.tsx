@@ -14,6 +14,7 @@ import { home, modules } from '../modules'
 import { CADASTRO_GROUPS } from '../pages/cadastros/groups'
 import { Logo } from './Logo'
 import { NotificationsBell } from './NotificationsBell'
+import { BranchSwitcher } from './BranchSwitcher'
 import { UserAvatar } from './UserAvatar'
 
 const ROLE_LABEL = (role: string, permissions: string[]) =>
@@ -97,13 +98,14 @@ export default function AppLayout() {
             <UnstyledButton onClick={() => navigate('/')} aria-label="Início"><Logo withText={!isMobile} /></UnstyledButton>
           </Group>
 
-          <Group gap="sm" wrap="nowrap">
+          <Group gap={isMobile ? 6 : 'sm'} wrap="nowrap">
+            <BranchSwitcher compact={!!isMobile} />
             <Tooltip label={scheme === 'dark' ? 'Tema claro' : 'Tema escuro'}>
               <ActionIcon variant="default" size="lg" radius="xl" onClick={() => setColorScheme(scheme === 'dark' ? 'light' : 'dark')} aria-label="Trocar tema">
                 {scheme === 'dark' ? <IconSun size={18} stroke={1.7} /> : <IconMoon size={18} stroke={1.7} />}
               </ActionIcon>
             </Tooltip>
-            {!Capacitor.isNativePlatform() && (
+            {!Capacitor.isNativePlatform() && !isMobile && (
               <Tooltip label="Baixar o app Android">
                 <ActionIcon component="a" href="/download/" target="_blank" variant="default" size="lg" radius="xl" aria-label="Baixar o app Android">
                   <IconBrandAndroid size={18} stroke={1.7} />

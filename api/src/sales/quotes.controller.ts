@@ -6,6 +6,7 @@ import { one } from '../common/db'
 import { addDays, today } from '../finance/finance.logic'
 import { ParametersService } from '../params/parameters.service'
 import type { User } from '../users/user.entity'
+import { CurrentBranch } from '../branches/branch.context'
 import { SalesDocDto, SalesDocsService } from './sales-docs.service'
 import { SalesEmailService, SendEmailDto } from './sales-email.service'
 
@@ -23,9 +24,9 @@ export class QuotesController {
   constructor(private readonly db: DataSource, private readonly docs: SalesDocsService, private readonly params: ParametersService, private readonly email: SalesEmailService) {}
 
   @Get()
-  list(@CurrentUser() me: User, @Query() q: ListQuery) {
+  list(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: ListQuery) {
     this.docs.requireSales(me)
-    return this.docs.list(this.db, 'quote', me, q.status ?? 'todos', q.q)
+    return this.docs.list(this.db, 'quote', me, q.status ?? 'todos', q.q, branch)
   }
 
   @Get(':id')
@@ -35,8 +36,9 @@ export class QuotesController {
   }
 
   @Post()
-  async create(@CurrentUser() me: User, @Body() dto: SalesDocDto) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: SalesDocDto) {
     this.docs.requireSales(me)
+    await this.docs.useBranch(me, dto, branch)
     const days = await this.params.get<number>('MV_ORCVAL')
     return this.db.transaction(async (tx) => {
       const prep = await this.docs.prepare(tx, dto)
@@ -53,6 +55,7 @@ export class QuotesController {
     return this.db.transaction(async (tx) => {
       const quote = await this.docs.editable(tx, 'quote', id, me)
       if (quote.status !== 'aberto') throw new BadRequestException('Só orçamentos em aberto podem ser alterados')
+      await this.docs.useBranch(me, dto, quote.company_id)
       await this.docs.save(tx, 'quote', id, dto)
       return this.docs.load(tx, 'quote', id, me)
     })

@@ -12,6 +12,8 @@ import { takeInvoiceNumber } from './numbering'
 import { SalesDocDto, SalesDocsService } from './sales-docs.service'
 import { SalesEmailService, SendEmailDto } from './sales-email.service'
 import type { User } from '../users/user.entity'
+import { branchForInsert, CurrentBranch, visibleIn } from '../branches/branch.context'
+import { branchStock, moveStock } from '../stock/stock'
 
 class ListQuery {
   @IsOptional() @IsIn(['aberto', 'faturado', 'cancelado', 'todos']) status?: string
@@ -46,18 +48,21 @@ export class SalesController {
 
   // Preço sugerido e saldo em estoque para a tela do pedido.
   @Get('sales/price')
-  async price(@CurrentUser() me: User, @Query() q: PriceQuery) {
+  async price(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: PriceQuery) {
     this.requireSales(me)
-    const product = found(await one(this.db, `SELECT sale_price, stock, unit FROM products WHERE id = $1`, [q.productId]), 'Produto não encontrado')
+    const product = found(await one(this.db, `SELECT sale_price, unit FROM products WHERE id = $1`, [q.productId]), 'Produto não encontrado')
     const table = q.priceTableId ? await one(this.db, `SELECT price FROM price_table_items WHERE price_table_id = $1 AND product_id = $2`, [q.priceTableId, q.productId]) : undefined
-    return { price: Number(table?.price ?? product.sale_price), fromTable: !!table, stock: Number(product.stock), unit: product.unit }
+    // Saldo da filial atual
+    const stock = (await branchStock(this.db, q.productId, branch)).quantity
+    return { price: Number(table?.price ?? product.sale_price), fromTable: !!table, stock, unit: product.unit }
   }
 
   // Prévia de preços, CFOP e impostos para a tela (orçamento ou pedido ainda não salvos).
   @Post('sales/preview')
   @HttpCode(200)
-  async preview(@CurrentUser() me: User, @Body() dto: SalesDocDto) {
+  async preview(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: SalesDocDto) {
     this.requireSales(me)
+    await this.docs.useBranch(me, dto, branch)
     const prep = await this.docs.prepare(this.db, dto)
     return {
       totals: prep.totals, warnings: prep.warnings, regime: prep.regime,
@@ -68,15 +73,15 @@ export class SalesController {
 
   // O que falta cadastrar antes de vender/faturar (a tela avisa ao abrir o formulário, não só ao salvar).
   @Get('sales/readiness')
-  async readiness(@CurrentUser() me: User, @Query() q: ReadinessQuery) {
+  async readiness(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: ReadinessQuery) {
     this.requireSales(me)
-    return this.docs.readiness(this.db, q.companyId)
+    return this.docs.readiness(this.db, q.companyId ?? branch ?? undefined)
   }
 
   @Get('sales-orders')
-  list(@CurrentUser() me: User, @Query() q: ListQuery) {
+  list(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: ListQuery) {
     this.requireSales(me)
-    return this.docs.list(this.db, 'order', me, q.status ?? 'todos', q.q)
+    return this.docs.list(this.db, 'order', me, q.status ?? 'todos', q.q, branch)
   }
 
   @Get('sales-orders/:id')
@@ -87,8 +92,9 @@ export class SalesController {
 
   // Pedido direto, sem orçamento.
   @Post('sales-orders')
-  async create(@CurrentUser() me: User, @Body() dto: SalesDocDto) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: SalesDocDto) {
     this.requireSales(me)
+    await this.docs.useBranch(me, dto, branch)
     return this.db.transaction(async (tx) => {
       const prep = await this.docs.prepare(tx, dto)
       const row = await one(tx, `INSERT INTO sales_orders (company_id, customer_id, seller_id, operation_type_id, payment_term_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -104,6 +110,7 @@ export class SalesController {
     return this.db.transaction(async (tx) => {
       const order = await this.docs.editable(tx, 'order', id, me)
       if (order.status !== 'aberto') throw new BadRequestException('Pedido faturado ou cancelado não pode ser alterado')
+      await this.docs.useBranch(me, dto, order.company_id)
       await this.docs.save(tx, 'order', id, dto)
       return this.docs.load(tx, 'order', id, me)
     })
@@ -172,11 +179,8 @@ export class SalesController {
           [invoice.id, n + 1, l.productId, l.name, l.ncm, l.unit, r.cfop, r.tes.id, l.quantity, l.unitPrice, l.total, l.costPrice, r.updatesStock, JSON.stringify(l.taxes)],
         )
         if (r.updatesStock) {
-          await tx.query(`UPDATE products SET stock = stock - $2, updated_at = now() WHERE id = $1`, [l.productId, l.quantity])
-          await tx.query(
-            `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id, cost_center_id) VALUES ($1, $2, $3, 'saida_nf', $4, $5, $6)`,
-            [l.productId, -l.quantity, l.costPrice, reference, me.id, order.cost_center_id],
-          )
+          // Baixa na filial da nota, pelo custo médio dela.
+          await moveStock(tx, { productId: l.productId, companyId: order.company_id, quantity: -l.quantity, unitCost: l.costPrice, kind: 'saida_nf', reference, userId: me.id, costCenterId: order.cost_center_id })
         }
       }
 
@@ -186,7 +190,7 @@ export class SalesController {
       if (receivable > 0 && operation.is_return) {
         // Devolução de compra: o fornecedor passa a dever (NDF), abatendo o contas a pagar dele.
         await createTitles(tx, {
-          kind: 'P', docType: 'NDF', companyId: order.company_id, supplierId: await this.supplierFromCustomer(tx, order.customer_id),
+          kind: 'P', docType: 'NDF', companyId: order.company_id, supplierId: await this.supplierFromCustomer(tx, order.customer_id, order.company_id),
           categoryId: await categoryByCode(tx, '1.04'), description: `Débito de devolução ${reference} · ${customer.name}`, document: reference,
           issueDate: today(), parcels: [{ amount: receivable, dueDate: today() }], salesInvoiceId: invoice.id, userId: me.id, costCenterId: order.cost_center_id,
           notes: 'NDF: débito do fornecedor. Abate o que você deve a ele ou é recebido em dinheiro.',
@@ -209,7 +213,7 @@ export class SalesController {
   }
 
   @Get('sales-invoices')
-  async invoices(@CurrentUser() me: User, @Query() q: InvoiceListQuery) {
+  async invoices(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: InvoiceListQuery) {
     this.requireSales(me)
     const rows = await this.db.query(
       `SELECT i.id, i.number, i.series, i.issued_at AS "issuedAt", i.total, i.status, i.sefaz_status AS "sefazStatus",
@@ -219,8 +223,9 @@ export class SalesController {
          AND ($2::date IS NULL OR (i.issued_at AT TIME ZONE 'America/Sao_Paulo')::date <= $2)
          AND ($3::text IS NULL OR c.name ILIKE '%' || $3 || '%' OR i.number::text = $3)
          AND ($4::uuid IS NULL OR o.seller_id = $4)
+         AND ($5::uuid IS NULL OR i.company_id = $5)
        ORDER BY i.issued_at DESC LIMIT 500`,
-      [q.from ?? null, q.to ?? null, q.q?.trim() || null, this.onlyOwn(me) ? me.id : null],
+      [q.from ?? null, q.to ?? null, q.q?.trim() || null, this.onlyOwn(me) ? me.id : null, branch],
     )
     return rows.map((r: any) => ({ ...numbers(r, 'total'), orderCode: r.orderNumber ? code('PV', r.orderNumber) : null }))
   }
@@ -257,14 +262,14 @@ export class SalesController {
   private onlyOwn = (me: User) => this.docs.onlyOwn(me)
 
   // Devolução de compra: o destinatário é o fornecedor. Acha pelo CNPJ ou cadastra a partir do cliente.
-  private async supplierFromCustomer(tx: Tx, customerId: string) {
+  private async supplierFromCustomer(tx: Tx, customerId: string, branch: string | null) {
     const c = (await one(tx, `SELECT document, name, trade_name, email, phone, city, uf FROM customers WHERE id = $1`, [customerId]))!
-    const existing = await one(tx, `SELECT id FROM suppliers WHERE cnpj = $1`, [c.document])
+    const existing = await one(tx, `SELECT id FROM suppliers t WHERE t.cnpj = $1 AND ${visibleIn('t', 2)}`, [c.document, branch])
     if (existing) return existing.id as string
     const created = await one(
       tx,
-      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [c.document, c.name, c.trade_name, c.email, c.phone, c.city, c.uf],
+      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, branch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [c.document, c.name, c.trade_name, c.email, c.phone, c.city, c.uf, await branchForInsert(tx, 'suppliers', branch)],
     )
     return created!.id as string
   }

@@ -7,8 +7,10 @@ const API = process.env.API ?? 'http://localhost:3000/api'
 const run = Date.now().toString(36).slice(-5).toUpperCase()
 let passed = 0
 const ok = (msg) => { passed++; console.log('  ✓', msg) }
+// Filial das requisições (cabeçalho X-Branch-Id), definida quando o teste cria a filial dele.
+let BRANCH = null
 async function call(token, method, path, body, expect) {
-  const res = await fetch(API + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
+  const res = await fetch(API + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(BRANCH ? { 'X-Branch-Id': BRANCH } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
   const data = res.status === 204 ? null : await res.json().catch(() => null)
   if (expect) assert.equal(res.status, expect, `${method} ${path}: esperado ${expect}, veio ${res.status} ${JSON.stringify(data)}`)
   else assert.ok(res.ok, `${method} ${path}: ${res.status} ${JSON.stringify(data)}`)
@@ -76,6 +78,9 @@ try {
     await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), isHead: true, document: cnpj(r12()), name: 'Matriz ' + run, uf: 'SP' })
   }
   const branch = await call(admin, 'POST', '/catalog/companies', { zip: '01001000', code: String(1000 + Math.floor(Math.random() * 9000)), document: cnpj(r12()), name: 'Filial ' + run, uf: 'SP', taxRegime: 'simples' })
+  // Daqui em diante o teste trabalha na filial nova: o estoque é por filial
+  BRANCH = branch.id
+  await call(tCad, 'PATCH', `/products/${prod.id}`, { stock: 50 })
   let ready = await call(tVend, 'GET', `/sales/readiness?companyId=${branch.id}`)
   assert.equal(ready.ready, true, 'faltar IE/endereço não impede o pedido')
   assert.equal(ready.complete, false)

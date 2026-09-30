@@ -30,6 +30,13 @@ export class User {
   @Column({ default: true })
   active: boolean
 
+  // Filiais liberadas (vazio = todas) e a filial em que o usuário entra
+  @Column({ name: 'branch_ids', type: 'uuid', array: true, default: () => "'{}'" })
+  branchIds: string[]
+
+  @Column({ name: 'default_branch_id', type: 'uuid', nullable: true })
+  defaultBranchId: string | null
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 

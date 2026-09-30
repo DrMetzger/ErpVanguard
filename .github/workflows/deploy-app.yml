@@ -44,6 +44,11 @@ jobs:
             --exclude node_modules --exclude dist \
             api web infra "$VPS_USER@$VPS_HOST:$APP_DIR/app/"
 
+      - name: Backup before update
+        run: |
+          # Cópia do banco antes de subir a versão nova (migrações); não trava o deploy na primeira vez.
+          ssh "$VPS_USER@$VPS_HOST" "if sudo docker ps --format {{.Names}} | grep -q vanguard-db; then sudo KIND=predeploy APP_DIR=$APP_DIR bash $APP_DIR/app/infra/backup.sh; else echo Banco ainda não está rodando; fi"
+
       - name: Sync optional secrets
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

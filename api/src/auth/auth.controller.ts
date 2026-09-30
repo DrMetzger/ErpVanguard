@@ -2,6 +2,8 @@ import { Body, Controller, Get, HttpCode, Post, UnauthorizedException } from '@n
 import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcryptjs'
 import { IsEmail, IsString, MinLength } from 'class-validator'
+import { DataSource } from 'typeorm'
+import { allowedBranches, branchList, CurrentBranch } from '../branches/branch.context'
 import { User } from '../users/user.entity'
 import { UsersService } from '../users/users.service'
 import { CurrentUser } from './current-user.decorator'
@@ -21,6 +23,7 @@ export class AuthController {
   constructor(
     private readonly users: UsersService,
     private readonly jwt: JwtService,
+    private readonly db: DataSource,
   ) {}
 
   @Public()
@@ -32,11 +35,14 @@ export class AuthController {
       throw new UnauthorizedException('E-mail ou senha inválidos')
     }
     const { passwordHash: _, ...profile } = user
-    return { token: await this.jwt.signAsync({ sub: user.id }), user: profile }
+    const branches = allowedBranches(user, await branchList(this.db))
+    const branchId = (branches.find((b) => b.id === user.defaultBranchId) ?? branches[0])?.id ?? null
+    return { token: await this.jwt.signAsync({ sub: user.id }), user: { ...profile, branches, branchId } }
   }
 
+  // Usuário + filiais liberadas e a filial desta requisição (para o seletor no topo da tela).
   @Get('me')
-  me(@CurrentUser() user: User) {
-    return user
+  async me(@CurrentUser() user: User, @CurrentBranch() branch: string | null) {
+    return { ...user, branches: allowedBranches(user, await branchList(this.db)), branchId: branch }
   }
 }

@@ -6,6 +6,8 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { requirePermission } from '../common/access'
 import { digits, one } from '../common/db'
 import type { User } from '../users/user.entity'
+import { branchForInsert, CurrentBranch, visibleIn } from '../branches/branch.context'
+import { NO_BRANCH } from '../branches/branch-tables'
 import { CustomFieldsService } from '../custom/custom-fields.service'
 import { isValidDocument } from './documents'
 
@@ -29,29 +31,31 @@ export class SuppliersController {
   constructor(private readonly db: DataSource, private readonly custom: CustomFieldsService) {}
 
   @Get()
-  list(@Query('q') q?: string) {
+  list(@CurrentBranch() branch: string | null, @Query('q') q?: string) {
     const term = q?.trim()
     return this.db.query(
-      `SELECT ${COLUMNS} FROM suppliers
+      `SELECT ${COLUMNS} FROM suppliers t
        WHERE ($1::text IS NULL OR name ILIKE '%' || $1 || '%' OR trade_name ILIKE '%' || $1 || '%' OR cnpj LIKE regexp_replace($1, '\\D', '', 'g') || '%')
+         AND ${visibleIn('t', 2)}
        ORDER BY name LIMIT 300`,
-      [term || null],
+      [term || null, branch],
     )
   }
 
   @Post()
-  async create(@CurrentUser() me: User, @Body() dto: CreateSupplierDto) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: CreateSupplierDto) {
     requirePermission(me, 'comprador')
     const cnpj = this.document(dto.cnpj)
-    if (await one(this.db, 'SELECT 1 FROM suppliers WHERE cnpj = $1', [cnpj])) {
+    const branchId = await branchForInsert(this.db, 'suppliers', branch)
+    if (await one(this.db, `SELECT 1 FROM suppliers WHERE cnpj = $1 AND coalesce(branch_id, '${NO_BRANCH}') = coalesce($2::uuid, '${NO_BRANCH}')`, [cnpj, branchId])) {
       throw new ConflictException('Já existe um fornecedor com este CNPJ/CPF')
     }
     const custom = await this.custom.validate('suppliers', dto.custom, {}, true)
     return one(
       this.db,
-      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, active, custom)
-       VALUES ($1, $2, $3, $4, $5, $6, upper($7), coalesce($8, true), $9) RETURNING ${COLUMNS}`,
-      [cnpj, dto.name, dto.tradeName || null, dto.email || null, dto.phone || null, dto.city || null, dto.uf || null, dto.active ?? null, JSON.stringify(custom)],
+      `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, active, custom, branch_id)
+       VALUES ($1, $2, $3, $4, $5, $6, upper($7), coalesce($8, true), $9, $10) RETURNING ${COLUMNS}`,
+      [cnpj, dto.name, dto.tradeName || null, dto.email || null, dto.phone || null, dto.city || null, dto.uf || null, dto.active ?? null, JSON.stringify(custom), branchId],
     )
   }
 

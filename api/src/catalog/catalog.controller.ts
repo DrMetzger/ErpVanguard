@@ -12,6 +12,15 @@ import { PRODUCT_SHEET, REF_TARGETS, resource, RESOURCES, UFS, type FieldDef, ty
 import { buildWorkbook, optionLabel, readWorkbook, sheetBool, sheetDate, sheetNumber, sheetOption, type SheetColumn } from '../common/sheet'
 import { ensureNcm } from './ncm'
 import { SettingsService } from '../settings/settings.service'
+import { branchForInsert, CurrentBranch, forgetBranches, visibleIn } from '../branches/branch.context'
+import { branchTable } from '../branches/branch-tables'
+
+// Filtro de filial: nos cadastros que podem ser exclusivos, só os compartilhados e os da filial atual.
+function scope(table: string, alias: string, params: unknown[], branch: string | null) {
+  if (!branchTable(table)) return ''
+  params.push(branch)
+  return ` AND ${visibleIn(alias, params.length)}`
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -51,51 +60,64 @@ export class CatalogController {
 
   // Opções para campos de seleção (ativos primeiro).
   @Get(':name/options')
-  async options(@Param('name') name: string, @Query('q') q?: string) {
+  async options(@Param('name') name: string, @CurrentBranch() branch: string | null, @Query('q') q?: string) {
     const target = refTarget(name)
     if (!target) throw new NotFoundException('Cadastro não encontrado')
     const search = REF_TARGETS[name]?.search ?? resource(name)!.search
     const term = q?.trim()
+    const params: unknown[] = [term || null]
+    const where = scope(target.table, 't', params, branch)
     return this.db.query(
-      `SELECT id AS value, ${target.labelExpr} AS label FROM ${target.table}
-       WHERE ($1::text IS NULL OR ${search.map((c) => `${c}::text ILIKE '%' || $1 || '%'`).join(' OR ')})
+      `SELECT id AS value, ${target.labelExpr} AS label FROM ${target.table} t
+       WHERE ($1::text IS NULL OR ${search.map((c) => `${c}::text ILIKE '%' || $1 || '%'`).join(' OR ')})${where}
        ORDER BY 2 LIMIT 300`,
-      [term || null],
+      params,
     )
   }
 
   @Get(':name')
-  async list(@Param('name') name: string, @Query('q') q?: string) {
+  async list(@Param('name') name: string, @CurrentBranch() branch: string | null, @Query('q') q?: string) {
     const def = this.def(name)
     const term = q?.trim()
+    const params: unknown[] = [term || null]
+    const where = scope(def.table, 't', params, branch)
     return this.db.query(
       `SELECT ${this.select(def)} FROM ${def.table} t
-       WHERE ($1::text IS NULL OR ${def.search.map((c) => `t.${c}::text ILIKE '%' || $1 || '%'`).join(' OR ')})
+       WHERE ($1::text IS NULL OR ${def.search.map((c) => `t.${c}::text ILIKE '%' || $1 || '%'`).join(' OR ')})${where}
        ORDER BY ${def.order.split(',').map((o) => `t.${o.trim()}`).join(', ')} LIMIT 1000`,
-      [term || null],
+      params,
     ).then((rows) => rows.map((r: any) => this.out(def, r)))
   }
 
   @Post(':name')
-  async create(@CurrentUser() me: User, @Param('name') name: string, @Body() body: Record<string, unknown>) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Param('name') name: string, @Body() body: Record<string, unknown>) {
     const def = this.def(name)
     this.canWrite(me, def)
     const { custom, ...rest } = body
     const values = this.values(def, rest, true)
+    if (branchTable(def.table)) values.branch_id = await branchForInsert(this.db, def.table, branch)
     if (CUSTOMIZABLE[def.name]) values.custom = JSON.stringify(await this.custom.validate(def.name, custom, {}, true))
     else if (custom !== undefined) throw new BadRequestException('Este cadastro não tem campos personalizados')
     const cols = Object.keys(values)
     const row = await this.run(def, () =>
       one(this.db, `INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, Object.values(values)),
     )
+    if (def.table === 'companies') {
+      forgetBranches()
+      // Primeira empresa: o estoque que estava só no produto passa a ser o saldo dela.
+      await this.db.query(
+        `INSERT INTO product_stock (product_id, company_id, quantity, avg_cost)
+         SELECT id, $1, stock, cost_price FROM products WHERE stock <> 0 AND NOT EXISTS (SELECT 1 FROM product_stock)`, [row!.id])
+    }
     return this.get(def, row!.id)
   }
 
   @Patch(':name/:id')
-  async update(@CurrentUser() me: User, @Param('name') name: string, @Param('id', ParseUUIDPipe) id: string, @Body() body: Record<string, unknown>) {
+  async update(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Param('name') name: string, @Param('id', ParseUUIDPipe) id: string, @Body() body: Record<string, unknown>) {
     const def = this.def(name)
     this.canWrite(me, def)
-    const current = await one(this.db, `SELECT * FROM ${def.table} WHERE id = $1`, [id])
+    const params: unknown[] = [id]
+    const current = await one(this.db, `SELECT * FROM ${def.table} t WHERE t.id = $1${scope(def.table, 't', params, branch)}`, params)
     if (!current) throw new NotFoundException(`${def.singular} não encontrado(a)`)
     const { custom, ...rest } = body
     const values = this.values(def, rest, false, current)
@@ -107,16 +129,19 @@ export class CatalogController {
     if (cols.length) {
       await this.run(def, () => this.db.query(`UPDATE ${def.table} SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...Object.values(values)]))
     }
+    if (def.table === 'companies') forgetBranches()
     return this.get(def, id)
   }
 
   @Delete(':name/:id')
   @HttpCode(204)
-  async remove(@CurrentUser() me: User, @Param('name') name: string, @Param('id', ParseUUIDPipe) id: string) {
+  async remove(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Param('name') name: string, @Param('id', ParseUUIDPipe) id: string) {
     const def = this.def(name)
     this.canWrite(me, def)
     try {
-      const rows = await this.db.query(`DELETE FROM ${def.table} WHERE id = $1 RETURNING id`, [id])
+      const params: unknown[] = [id]
+      const rows = await this.db.query(`DELETE FROM ${def.table} t WHERE t.id = $1${scope(def.table, 't', params, branch)} RETURNING id`, params)
+      if (def.table === 'companies') forgetBranches()
       if (!rows.length) throw new NotFoundException(`${def.singular} não encontrado(a)`)
     } catch (error: any) {
       if (error?.code === '23503') throw new ConflictException(`Não dá para excluir: este(a) ${def.singular} está em uso. Desative em vez de excluir.`)
@@ -128,20 +153,22 @@ export class CatalogController {
 
   // Modelo em branco com instruções e listas de opções.
   @Get(':name/sheet/template')
-  async template(@CurrentUser() me: User, @Param('name') name: string, @Res() res: Response) {
+  async template(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Param('name') name: string, @Res() res: Response) {
     const def = this.sheetDef(name)
     this.canWrite(me, def)
-    const { columns } = await this.sheetColumns(def)
+    const { columns } = await this.sheetColumns(def, branch)
     this.sendXlsx(res, `modelo-${def.name}.xlsx`, await buildWorkbook(def.title, columns))
   }
 
   // Todos os registros no mesmo formato do modelo (dá para editar e importar de volta).
   @Get(':name/sheet/export')
-  async export(@CurrentUser() me: User, @Param('name') name: string, @Res() res: Response) {
+  async export(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Param('name') name: string, @Res() res: Response) {
     const def = this.sheetDef(name)
     if (def.name === 'companies' && !isAdmin(me)) throw new ForbiddenException('Só o administrador exporta empresas')
-    const { columns, customDefs } = await this.sheetColumns(def)
-    const rows = (await this.db.query(`SELECT ${this.select(def)} FROM ${def.table} t ORDER BY ${def.order.split(',').map((o) => `t.${o.trim()}`).join(', ')} LIMIT 50000`)).map((r: any) => this.out(def, r))
+    const { columns, customDefs } = await this.sheetColumns(def, branch)
+    const params: unknown[] = []
+    const where = scope(def.table, 't', params, branch).replace(' AND ', 'WHERE ')
+    const rows = (await this.db.query(`SELECT ${this.select(def)} FROM ${def.table} t ${where} ORDER BY ${def.order.split(',').map((o) => `t.${o.trim()}`).join(', ')} LIMIT 50000`, params)).map((r: any) => this.out(def, r))
     const fmt = (f: FieldDef, row: any) => {
       const v = row[f.key]
       if (v === null || v === undefined || v === '') return null
@@ -171,14 +198,15 @@ export class CatalogController {
 
   // Confere (commit=false) ou grava (commit=true) a planilha. Grava tudo ou nada: com erro, nada é gravado.
   @Post(':name/sheet/import')
-  async import(@CurrentUser() me: User, @Param('name') name: string, @Body() body: { file?: string; commit?: boolean }) {
+  async import(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Param('name') name: string, @Body() body: { file?: string; commit?: boolean }) {
     const def = this.sheetDef(name)
     this.canWrite(me, def)
     if (typeof body?.file !== 'string' || !body.file) throw new BadRequestException('Envie a planilha')
     const buffer = Buffer.from(body.file, 'base64')
     if (buffer.length > 3.5 * 1024 * 1024) throw new BadRequestException('Planilha grande demais (máx. 3,5 MB): divida em partes')
-    const { columns, customDefs, refs } = await this.sheetColumns(def)
+    const { columns, customDefs, refs } = await this.sheetColumns(def, branch)
     const lines = await readWorkbook(buffer, columns)
+    const newBranch = branchTable(def.table) ? await branchForInsert(this.db, def.table, branch) : undefined
     if (!lines.length) throw new BadRequestException('A planilha não tem linhas preenchidas (comece na linha 3 da aba Dados)')
     const keyFields = (def.importKey ?? [['code'], ['document'], ['cnpj'], ['sku'], ['uf']].find((k) => def.fields.some((f) => f.key === k[0])) ?? [])
       .map((k) => def.fields.find((f) => f.key === k)!).filter(Boolean)
@@ -214,7 +242,8 @@ export class CatalogController {
           const dup = keyValues.join('|')
           if (seen.has(dup)) errors.push(`repetido na planilha (mesmo ${keyFields.map((f) => f.label).join(' + ')} da linha ${seen.get(dup)})`)
           seen.set(dup, line)
-          current = await one(tx, `SELECT * FROM ${def.table} WHERE ${keyFields.map((f, i) => `${f.column} = $${i + 1}`).join(' AND ')}`, keyValues)
+          const params: unknown[] = [...keyValues]
+          current = await one(tx, `SELECT * FROM ${def.table} t WHERE ${keyFields.map((f, i) => `t.${f.column} = $${i + 1}`).join(' AND ')}${scope(def.table, 't', params, branch)}`, params)
         }
         const label = String(input.name ?? input.description ?? input[keyFields[0]?.key ?? ''] ?? `linha ${line}`)
         // Atualização: só confere e grava o que mudou (dado antigo igual ao da planilha não trava a importação).
@@ -230,6 +259,7 @@ export class CatalogController {
           await runner.query('SAVEPOINT linha')
           try {
             const cols = this.values(def, input, !current, current)
+            if (!current && newBranch !== undefined) cols.branch_id = newBranch
             if (CUSTOMIZABLE[def.name] && (customDefs.length || !current)) cols.custom = JSON.stringify(await this.custom.validate(def.name, custom, current?.custom ?? {}, !current, tx))
             const names = Object.keys(cols)
             if (current) {
@@ -270,7 +300,7 @@ export class CatalogController {
   // ── Sincronização do app do celular: só o que mudou desde a última vez ──────────────
   // Cursor = (updated_at, id) da última linha recebida; a primeira página também traz as exclusões.
   @Get(':name/sync')
-  async sync(@Param('name') name: string, @Query('since') since?: string, @Query('after') after?: string, @Query('limit') limit?: string) {
+  async sync(@Param('name') name: string, @CurrentBranch() branch: string | null, @Query('since') since?: string, @Query('after') after?: string, @Query('limit') limit?: string) {
     const n = Math.min(5000, Math.max(100, Number(limit) || 2000))
     const from = since && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}(:?\d{2})?|Z)?$/.test(since) ? since : '1970-01-01 00:00:00+00'
     if (name === 'price-table-items') {
@@ -283,12 +313,14 @@ export class CatalogController {
       return this.syncPage('price_table_items', rows, n, from, after)
     }
     const def = name === 'products' ? PRODUCT_SHEET : this.def(name)
+    const params: unknown[] = [from, after ?? '', n]
+    const where = scope(def.table, 't', params, branch)
     const rows = await this.db.query(
       `SELECT ${this.select(def)}, t.updated_at::text AS "_at", (${def.labelExpr}) AS "_label",
               lower(concat_ws(' ', ${def.search.map((c) => `t.${c}::text`).join(', ')})) AS "_search", t.${def.order.split(',')[0]!.trim().split(' ')[0]}::text AS "_sort"
        FROM ${def.table} t
-       WHERE t.updated_at > $1::timestamptz OR (t.updated_at = $1::timestamptz AND t.id::text > $2)
-       ORDER BY t.updated_at, t.id LIMIT $3`, [from, after ?? '', n])
+       WHERE (t.updated_at > $1::timestamptz OR (t.updated_at = $1::timestamptz AND t.id::text > $2))${where}
+       ORDER BY t.updated_at, t.id LIMIT $3`, params)
     return this.syncPage(def.table, rows.map((r: any) => this.out(def, r)), n, from, after)
   }
 
@@ -311,7 +343,7 @@ export class CatalogController {
   }
 
   // Colunas da planilha: campos do cadastro (menos os internos) + campos personalizados.
-  private async sheetColumns(def: ResourceDef) {
+  private async sheetColumns(def: ResourceDef, branch: string | null) {
     const TYPE: Record<string, string> = { text: 'Texto', int: 'Número inteiro', decimal: 'Número', bool: 'Sim/Não', date: 'Data', enum: 'Lista', ref: 'Lista', uf: 'UF',
       document: 'CPF/CNPJ', phone: 'Telefone', zip: 'CEP', city: 'Cidade', ie: 'Inscrição estadual' }
     const refs: Record<string, { byLabel: Map<string, string>; byCode: Map<string, string> }> = {}
@@ -335,7 +367,9 @@ export class CatalogController {
       if (f.type === 'ref') {
         const target = refTarget(f.ref!)!
         const code = (REF_TARGETS[f.ref!]?.search ?? resource(f.ref!)?.search ?? ['id'])[0]
-        const list: { id: string; label: string; code: string }[] = await this.db.query(`SELECT id, ${target.labelExpr} AS label, ${code}::text AS code FROM ${target.table} ORDER BY 2 LIMIT 5000`)
+        const params: unknown[] = []
+        const where = scope(target.table, 't', params, branch).replace(' AND ', 'WHERE ')
+        const list: { id: string; label: string; code: string }[] = await this.db.query(`SELECT id, ${target.labelExpr} AS label, ${code}::text AS code FROM ${target.table} t ${where} ORDER BY 2 LIMIT 5000`, params)
         refs[f.key] = { byLabel: new Map(list.map((r) => [r.label.toLowerCase(), r.id])), byCode: new Map(list.map((r) => [String(r.code).toLowerCase(), r.id])) }
         if (list.length <= 1000) col.options = list.map((r) => r.label)
         help.push('escolha da lista (ou digite o código)')

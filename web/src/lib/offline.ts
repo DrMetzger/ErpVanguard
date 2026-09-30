@@ -16,6 +16,7 @@ export interface QueuedWrite {
   at: string
   label: string
   error?: string
+  branch?: string | null // filial em que foi feita
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null

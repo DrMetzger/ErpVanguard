@@ -16,6 +16,7 @@ export interface NewOrder {
   purchaseGroupId: string
   quotationId: string | null
   buyerId: string
+  companyId?: string | null // filial do pedido (a da cotação)
   paymentTerms: string | null
   deliveryDays: number | null
   freight: number
@@ -40,9 +41,9 @@ export async function createOrder(tx: EntityManager, order: NewOrder) {
 
   const { id, number } = (await one(
     tx,
-    `INSERT INTO purchase_orders (supplier_id, purchase_group_id, quotation_id, buyer_id, status, payment_terms, delivery_days, freight, total, required_levels)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, number`,
-    [order.supplierId, order.purchaseGroupId, order.quotationId, order.buyerId, status, order.paymentTerms, order.deliveryDays, order.freight, total, required],
+    `INSERT INTO purchase_orders (supplier_id, purchase_group_id, quotation_id, buyer_id, status, payment_terms, delivery_days, freight, total, required_levels, company_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, number`,
+    [order.supplierId, order.purchaseGroupId, order.quotationId, order.buyerId, status, order.paymentTerms, order.deliveryDays, order.freight, total, required, order.companyId ?? null],
   ))!
   for (const item of order.items) {
     await tx.query(

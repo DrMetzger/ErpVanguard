@@ -13,6 +13,8 @@ import { isValidCnpj } from '../purchasing/documents'
 import { SettingsService } from '../settings/settings.service'
 import { saleSeries } from './numbering'
 import { computeTaxes, loadTaxContext, type ItemTaxes, type TaxTotals } from '../taxes/tax-engine'
+import { branchStocks } from '../stock/stock'
+import { ensureBranchAccess } from '../branches/branch.context'
 import type { User } from '../users/user.entity'
 
 export class ItemDto {
@@ -61,6 +63,12 @@ export class SalesDocsService {
     if (!can(me, 'vendedor') && !can(me, 'faturamento')) throw new ForbiddenException('Seu usuário não tem o perfil "vendedor" nem "faturamento"')
   }
 
+  // Filial do documento: a escolhida (se liberada para o usuário) ou a filial atual.
+  async useBranch(me: User, dto: SalesDocDto, fallback: string | null) {
+    if (dto.companyId) await ensureBranchAccess(this.db, me, dto.companyId)
+    else if (fallback) dto.companyId = fallback
+  }
+
   // Vendedor vê só os próprios documentos; faturamento vê todos.
   onlyOwn = (me: User) => !can(me, 'faturamento')
 
@@ -97,6 +105,12 @@ export class SalesDocsService {
         quantity: item.quantity, unitPrice, discountPct, total: round2(item.quantity * unitPrice * (1 - discountPct / 100)), fiscal,
         ...({ _product: p } as any),
       })
+    }
+    // Saldo e custo médio da filial do documento.
+    const stocks = await branchStocks(tx, lines.map((l) => l.productId), company.id)
+    for (const l of lines) {
+      const st = stocks.get(l.productId)
+      if (st) { l.stock = st.quantity; l.costPrice = st.avgCost } else if (company.id) l.stock = 0
     }
     const ctx = await loadTaxContext(tx, this.params, { companyId: company.id, destUf: customer.uf, taxpayer: customer.taxpayer, operationTypeId: operation.id, date: new Date().toISOString().slice(0, 10) })
     const freight = round2(dto.freight ?? 0)
@@ -210,10 +224,11 @@ export class SalesDocsService {
     ), `${d.name} não encontrado`)
     if (this.onlyOwn(me) && doc.sellerId !== me.id) throw new NotFoundException(`${d.name} não encontrado`)
     const items = await db.query(
-      `SELECT i.id, i.product_id AS "productId", p.sku, p.name, p.unit, p.stock, i.quantity, i.unit_price AS "unitPrice", i.discount_pct AS "discountPct", i.total,
+      `SELECT i.id, i.product_id AS "productId", p.sku, p.name, p.unit,
+              coalesce((SELECT ps.quantity FROM product_stock ps WHERE ps.product_id = p.id AND ps.company_id = $2), CASE WHEN $2::uuid IS NULL THEN p.stock ELSE 0 END) AS stock, i.quantity, i.unit_price AS "unitPrice", i.discount_pct AS "discountPct", i.total,
               i.cfop, i.taxes, t.code AS "tesCode", t.updates_stock AS "updatesStock"
        FROM ${d.items} i JOIN products p ON p.id = i.product_id LEFT JOIN tes t ON t.id = i.tes_id WHERE i.${d.fk} = $1 ORDER BY i.position`,
-      [id],
+      [id, doc.companyId],
     )
     const warnings: string[] = []
     const open = doc.status === 'aberto'
@@ -243,7 +258,7 @@ export class SalesDocsService {
     }
   }
 
-  async list(db: Db, kind: DocKind, me: User, status: string, q?: string) {
+  async list(db: Db, kind: DocKind, me: User, status: string, q: string | undefined, branch: string | null) {
     const d = DOC[kind]
     const rows = await db.query(
       `SELECT o.id, o.number, o.status, o.total, o.created_at AS "createdAt", o.valid_until::text AS "validUntil",
@@ -253,15 +268,16 @@ export class SalesDocsService {
        JOIN companies co ON co.id = o.company_id JOIN payment_terms pt ON pt.id = o.payment_term_id
        WHERE ($1 = 'todos' OR o.status = $1) AND ($2::uuid IS NULL OR o.seller_id = $2)
          AND ($3::text IS NULL OR c.name ILIKE '%' || $3 || '%' OR c.document LIKE $3 || '%' OR o.number::text = $3)
+         AND ($4::uuid IS NULL OR o.company_id = $4)
        ORDER BY o.number DESC LIMIT 500`,
-      [status, this.onlyOwn(me) ? me.id : null, q?.trim() || null],
+      [status, this.onlyOwn(me) ? me.id : null, q?.trim() || null, branch],
     )
     return rows.map((r: any) => ({ ...numbers(r, 'total'), code: code(d.prefix, r.number) }))
   }
 
   async editable(tx: Db, kind: DocKind, id: string, me: User) {
     const d = DOC[kind]
-    const doc = found(await one(tx, `SELECT id, status, seller_id FROM ${d.table} WHERE id = $1 FOR UPDATE`, [id]), `${d.name} não encontrado`)
+    const doc = found(await one(tx, `SELECT id, status, seller_id, company_id FROM ${d.table} WHERE id = $1 FOR UPDATE`, [id]), `${d.name} não encontrado`)
     if (this.onlyOwn(me) && doc.seller_id !== me.id) throw new ForbiddenException(`Este ${d.name.toLowerCase()} é de outro vendedor`)
     return doc
   }

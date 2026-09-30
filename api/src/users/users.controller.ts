@@ -1,8 +1,8 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import * as bcrypt from 'bcryptjs'
-import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MinLength } from 'class-validator'
-import { Repository } from 'typeorm'
+import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MinLength } from 'class-validator'
+import { DataSource, Repository } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { requireAdmin } from '../common/access'
 import { PERMISSIONS, type Permission, User, type UserRole } from './user.entity'
@@ -13,6 +13,8 @@ class CreateUserDto {
   @IsString() @MinLength(8, { message: 'A senha precisa ter pelo menos 8 caracteres' }) password: string
   @IsOptional() @IsIn(['admin', 'user']) role?: UserRole
   @IsOptional() @IsArray() @ArrayUnique() @IsIn(PERMISSIONS, { each: true }) permissions?: Permission[]
+  @IsOptional() @IsArray() @ArrayUnique() @IsUUID('all', { each: true }) branchIds?: string[]
+  @IsOptional() @IsUUID() defaultBranchId?: string | null
 }
 
 class UpdateUserDto {
@@ -21,6 +23,18 @@ class UpdateUserDto {
   @IsOptional() @IsArray() @ArrayUnique() @IsIn(PERMISSIONS, { each: true }) permissions?: Permission[]
   @IsOptional() @IsBoolean() active?: boolean
   @IsOptional() @IsString() @MinLength(8, { message: 'A senha precisa ter pelo menos 8 caracteres' }) password?: string
+  @IsOptional() @IsArray() @ArrayUnique() @IsUUID('all', { each: true }) branchIds?: string[]
+  @IsOptional() @IsUUID() defaultBranchId?: string | null
+}
+
+// Filiais liberadas precisam existir; a padrão precisa estar entre as liberadas (vazio = todas).
+async function checkBranches(db: DataSource, branchIds: string[], defaultBranchId: string | null) {
+  const ids = [...branchIds, ...(defaultBranchId ? [defaultBranchId] : [])]
+  if (ids.length) {
+    const found: { id: string }[] = await db.query(`SELECT id FROM companies WHERE id = ANY($1::uuid[])`, [ids])
+    if (found.length !== new Set(ids).size) throw new BadRequestException('Filial não encontrada')
+  }
+  if (defaultBranchId && branchIds.length && !branchIds.includes(defaultBranchId)) throw new BadRequestException('A filial padrão precisa estar entre as liberadas')
 }
 
 class AvatarDto {
@@ -35,7 +49,7 @@ class ChangePasswordDto {
 
 @Controller()
 export class UsersController {
-  constructor(@InjectRepository(User) private readonly users: Repository<User>) {}
+  constructor(@InjectRepository(User) private readonly users: Repository<User>, private readonly db: DataSource) {}
 
   // Lista enxuta usada nos seletores (grupos, alçadas) por qualquer usuário logado.
   @Get('users')
@@ -48,12 +62,15 @@ export class UsersController {
     requireAdmin(me)
     const email = dto.email.toLowerCase()
     if (await this.users.existsBy({ email })) throw new ConflictException('Já existe um usuário com este e-mail')
+    await checkBranches(this.db, dto.branchIds ?? [], dto.defaultBranchId ?? null)
     const user = await this.users.save(
       this.users.create({
         name: dto.name,
         email,
         role: dto.role ?? 'user',
         permissions: dto.permissions ?? [],
+        branchIds: dto.branchIds ?? [],
+        defaultBranchId: dto.defaultBranchId ?? null,
         passwordHash: await bcrypt.hash(dto.password, 12),
       }),
     )
@@ -70,6 +87,9 @@ export class UsersController {
       throw new BadRequestException('Você não pode desativar nem tirar o perfil de administrador de si mesmo')
     }
     const { password, ...fields } = dto
+    if (dto.branchIds !== undefined || dto.defaultBranchId !== undefined) {
+      await checkBranches(this.db, dto.branchIds ?? user.branchIds, dto.defaultBranchId !== undefined ? dto.defaultBranchId : user.defaultBranchId)
+    }
     Object.assign(user, fields)
     if (password) user.passwordHash = await bcrypt.hash(password, 12)
     const { passwordHash: _, ...profile } = await this.users.save(user)

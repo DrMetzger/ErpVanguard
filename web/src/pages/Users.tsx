@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Button, Card, Checkbox, Group, Modal, PasswordInput, SegmentedControl, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
+import { ActionIcon, Badge, Button, Card, Checkbox, Group, Modal, MultiSelect, PasswordInput, SegmentedControl, Select, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { IconEdit, IconPlus } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { Loading, PageHeader } from '../components/ui'
@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { useUser } from '../lib/auth'
 import { UserAvatar } from '../components/UserAvatar'
 import { useAction, useApi } from '../lib/hooks'
-import type { Permission, User } from '../lib/types'
+import { branchLabel, type Permission, type User } from '../lib/types'
 
 const PERMS: [Permission, string, string][] = [
   ['solicitante', 'Solicitante', 'Abre solicitações de compra'],
@@ -64,12 +64,16 @@ function UserForm({ user, onClose, onSaved }: { user: Partial<User>; onClose: ()
   const [form, setForm] = useState({
     name: user.name ?? '', email: user.email ?? '', password: '', role: user.role ?? 'user',
     permissions: (user.permissions ?? ['solicitante']) as string[], active: user.active ?? true,
+    branchIds: user.branchIds ?? [], defaultBranchId: user.defaultBranchId ?? null,
   })
   const { busy, run } = useAction()
+  // Filiais cadastradas (o administrador enxerga todas)
+  const branches = (useUser().branches ?? []).map((b) => ({ value: b.id, label: branchLabel(b) }))
+  const defaultOptions = form.branchIds.length ? branches.filter((b) => form.branchIds.includes(b.value)) : branches
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const body = { name: form.name, role: form.role, permissions: form.permissions }
+    const body = { name: form.name, role: form.role, permissions: form.permissions, branchIds: form.branchIds, defaultBranchId: form.defaultBranchId }
     run(() => (isNew
       ? api('/users', { method: 'POST', body: { ...body, email: form.email, password: form.password } })
       : api(`/users/${user.id}`, { method: 'PATCH', body: { ...body, active: form.active, ...(form.password ? { password: form.password } : {}) } })
@@ -91,6 +95,14 @@ function UserForm({ user, onClose, onSaved }: { user: Partial<User>; onClose: ()
             <Stack gap="xs" mt="xs">{PERMS.map(([key, label, hint]) => <Checkbox key={key} value={key} label={label} description={hint} />)}</Stack>
           </Checkbox.Group>
         ) : <Text size="sm" c="dimmed">Administrador tem todos os perfis e configura grupos, alçadas e usuários.</Text>}
+        {branches.length > 0 && (
+          <>
+            <MultiSelect label="Filiais liberadas" placeholder={form.branchIds.length ? undefined : 'Todas as filiais'} description="Vazio = todas. O usuário só vê e lança documentos nas filiais liberadas (o administrador vê todas)."
+              data={branches} value={form.branchIds} searchable clearable
+              onChange={(branchIds) => setForm({ ...form, branchIds, defaultBranchId: form.defaultBranchId && (!branchIds.length || branchIds.includes(form.defaultBranchId)) ? form.defaultBranchId : null })} />
+            <Select label="Filial padrão" placeholder="A primeira liberada (matriz)" description="Onde o usuário entra ao acessar o sistema" data={defaultOptions} value={form.defaultBranchId} onChange={(v) => setForm({ ...form, defaultBranchId: v })} clearable />
+          </>
+        )}
         {!isNew && <Switch label="Usuário ativo" checked={form.active} onChange={(e) => setForm({ ...form, active: e.currentTarget.checked })} />}
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Salvar</Button></Group>
       </Stack>

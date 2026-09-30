@@ -6,6 +6,7 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { can, isAdmin, requirePermission } from '../common/access'
 import { numbers, one } from '../common/db'
 import type { User } from '../users/user.entity'
+import { CurrentBranch } from '../branches/branch.context'
 import { buyerGroupIds, code, found } from './purchasing.helpers'
 
 class RequestItemDto {
@@ -46,21 +47,22 @@ export class RequestsController {
 
   // Solicitante vê as suas; comprador vê as dos seus grupos; admin vê todas.
   @Get()
-  async list(@CurrentUser() me: User, @Query('status') status?: string) {
+  async list(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query('status') status?: string) {
     const groups = can(me, 'comprador') ? await buyerGroupIds(this.db, me) : []
     const rows = await this.db.query(
       `${SELECT}
        WHERE ($1::uuid[] IS NULL OR r.requester_id = $2 OR r.purchase_group_id = ANY($1))
          AND ($3::text IS NULL OR r.status = $3)
+         AND ($4::uuid IS NULL OR r.company_id = $4)
        ORDER BY r.number DESC LIMIT 300`,
-      [groups, me.id, status || null],
+      [groups, me.id, status || null, branch],
     )
     return rows.map(shape)
   }
 
   // Itens ainda sem cotação, para o comprador montar uma cotação.
   @Get('pending-items')
-  async pendingItems(@CurrentUser() me: User) {
+  async pendingItems(@CurrentUser() me: User, @CurrentBranch() branch: string | null) {
     requirePermission(me, 'comprador')
     const groups = await buyerGroupIds(this.db, me)
     const rows = await this.db.query(
@@ -74,8 +76,9 @@ export class RequestsController {
        LEFT JOIN products p ON p.id = i.product_id
        WHERE i.status = 'pendente' AND r.status IN ('aberta', 'em_cotacao')
          AND ($1::uuid[] IS NULL OR r.purchase_group_id = ANY($1))
+         AND ($2::uuid IS NULL OR r.company_id = $2)
        ORDER BY r.number, i.description`,
-      [groups],
+      [groups, branch],
     )
     return rows.map((r: any) => ({ ...numbers(r, 'quantity'), requestCode: code('SC', r.requestNumber) }))
   }
@@ -88,13 +91,13 @@ export class RequestsController {
   }
 
   @Post()
-  async create(@CurrentUser() me: User, @Body() dto: CreateRequestDto) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: CreateRequestDto) {
     requirePermission(me, 'solicitante')
     found(await one(this.db, `SELECT 1 FROM purchase_groups WHERE id = $1 AND active`, [dto.purchaseGroupId]), 'Grupo de compras não encontrado')
 
     return this.db.transaction(async (tx) => {
-      const { id } = (await one(tx, `INSERT INTO purchase_requests (requester_id, purchase_group_id, needed_by, notes) VALUES ($1, $2, $3, $4) RETURNING id`, [
-        me.id, dto.purchaseGroupId, dto.neededBy || null, dto.notes || null,
+      const { id } = (await one(tx, `INSERT INTO purchase_requests (requester_id, purchase_group_id, needed_by, notes, company_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [
+        me.id, dto.purchaseGroupId, dto.neededBy || null, dto.notes || null, branch,
       ]))!
       for (const item of dto.items) {
         let { description, unit } = item

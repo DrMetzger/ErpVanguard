@@ -87,6 +87,8 @@ function ProductForm({ product, custom, onClose, onSaved, readOnly = false }: { 
   const [pending, setPending] = useState<PendingPhoto[]>([])
   const [photosChanged, setPhotosChanged] = useState(false)
   const isNew = !product.id
+  const user = useUser()
+  const branch = user.branches?.find((b) => b.id === user.branchId)
   const [form, setForm] = useState({
     sku: product.sku ?? '', name: product.name ?? '', barcode: product.barcode ?? '', ncm: product.ncm ?? '', unit: product.unit ?? 'UN',
     costPrice: product.costPrice ?? ('' as number | string), salePrice: product.salePrice ?? ('' as number | string),
@@ -139,9 +141,10 @@ function ProductForm({ product, custom, onClose, onSaved, readOnly = false }: { 
             placeholder="O da TES" description="Só se este produto for diferente da TES (ex.: 200003 alimentos do Anexo I)" />}
           {L.show('costPrice') && <Money label={L.label('costPrice', 'Preço de custo')} style={{ order: L.order('costPrice') }} value={form.costPrice} onChange={(v) => set('costPrice', v)} />}
           {L.show('salePrice') && <Money label={L.label('salePrice', 'Preço de venda')} style={{ order: L.order('salePrice') }} value={form.salePrice} onChange={(v) => set('salePrice', v)} />}
-          <BrNumber label="Estoque atual" decimalScale={4} allowNegative value={form.stock} onChange={(v) => set('stock', v)} />
+          <BrNumber label={branch ? `Estoque atual (filial ${branch.code})` : 'Estoque atual'} description={branch && !isNew ? 'Mudar o saldo gera um ajuste de estoque nesta filial' : undefined} decimalScale={4} allowNegative value={form.stock} onChange={(v) => set('stock', v)} />
           {L.show('minStock') && <BrNumber label={L.label('minStock', 'Estoque mínimo')} style={{ order: L.order('minStock') }} decimalScale={4} value={form.minStock} onChange={(v) => set('minStock', v)} />}
         </SimpleGrid>
+        {!isNew && (user.branches?.length ?? 0) > 1 && <BranchStock productId={product.id!} unit={form.unit} />}
         <ProductPhotos productId={product.id} pending={pending} onPending={setPending} onChanged={() => setPhotosChanged(true)} />
         <ProductVideos productId={product.id} />
         <CustomFieldsInputs fields={custom?.fields ?? []} values={extra} onChange={setExtra} labels={custom?.layout.labels} />
@@ -150,5 +153,23 @@ function ProductForm({ product, custom, onClose, onSaved, readOnly = false }: { 
         <Group justify="flex-end"><Button variant="default" onClick={photosChanged ? onSaved : onClose}>{photosChanged || readOnly ? 'Fechar' : 'Cancelar'}</Button>{!readOnly && <Button type="submit" loading={busy}>Salvar</Button>}</Group>
       </Stack>
     </Modal>
+  )
+}
+
+// Saldo do produto em cada filial liberada para o usuário.
+function BranchStock({ productId, unit }: { productId: string; unit: string }) {
+  const { data } = useApi<{ companyId: string; label: string; quantity: number; avgCost: number }[]>(`/stock/branches?productId=${productId}`)
+  if (!data) return null
+  return (
+    <Card withBorder p="xs">
+      <Text size="sm" fw={600} mb={4}>Saldo por filial</Text>
+      <Table>
+        <Table.Tbody>
+          {data.map((b) => (
+            <Table.Tr key={b.companyId}><Table.Td>{b.label}</Table.Td><Table.Td ta="right">{b.quantity.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {unit}</Table.Td><Table.Td ta="right" c="dimmed">custo {money(b.avgCost)}</Table.Td></Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Card>
   )
 }

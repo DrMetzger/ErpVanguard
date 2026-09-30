@@ -17,6 +17,8 @@ import { resolveFiscal } from '../catalog/fiscal'
 import { checkCostCenter } from '../finance/cost-centers'
 import { categoryByCode, createTitles, round2, today } from '../finance/finance.logic'
 import { similarity } from './similarity'
+import { moveStock } from '../stock/stock'
+import { branchForInsert, CurrentBranch, visibleIn } from '../branches/branch.context'
 
 class ImportDto {
   @IsString() @MaxLength(5_000_000) xml: string
@@ -51,14 +53,15 @@ export class InvoicesController {
   constructor(private readonly db: DataSource, private readonly settings: SettingsService) {}
 
   @Get()
-  async list(@CurrentUser() me: User) {
+  async list(@CurrentUser() me: User, @CurrentBranch() branch: string | null) {
     requireEntry(me)
     return (
       await this.db.query(
         `SELECT i.id, i.number, i.series, i.issue_date AS "issueDate", i.total, i.status, i.created_at AS "createdAt",
                 s.name AS "supplierName", o.number AS "orderNumber"
          FROM invoices i JOIN suppliers s ON s.id = i.supplier_id LEFT JOIN purchase_orders o ON o.id = i.purchase_order_id
-         ORDER BY i.created_at DESC LIMIT 300`,
+         WHERE ($1::uuid IS NULL OR i.company_id = $1)
+         ORDER BY i.created_at DESC LIMIT 300`, [branch],
       )
     ).map((r: any) => ({ ...numbers(r, 'total'), orderCode: r.orderNumber ? code('PC', r.orderNumber) : null }))
   }
@@ -71,7 +74,7 @@ export class InvoicesController {
 
   // Lê o XML, cadastra o fornecedor se preciso, encontra o pedido e amarra os itens.
   @Post('import')
-  async import(@CurrentUser() me: User, @Body() dto: ImportDto) {
+  async import(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: ImportDto) {
     requirePermission(me, 'comprador')
     const nfe = parseNfe(dto.xml)
     const existing = await one(this.db, `SELECT id FROM invoices WHERE access_key = $1`, [nfe.accessKey])
@@ -81,15 +84,19 @@ export class InvoicesController {
     if (!isValidDocument(cnpj)) throw new BadRequestException('CNPJ do emitente inválido no XML')
 
     return this.db.transaction(async (tx) => {
-      let supplier = await one(tx, `SELECT id FROM suppliers WHERE cnpj = $1`, [cnpj])
+      // A nota entra na filial destinatária (CNPJ do XML); se não for de nenhuma, na filial atual.
+      const recipient = digits(nfe.recipientDocument)
+      const companyId: string | null = (recipient ? (await one(tx, `SELECT id FROM companies WHERE document = $1 AND active`, [recipient]))?.id : null) ?? branch
+      let supplier = await one(tx, `SELECT id FROM suppliers t WHERE t.cnpj = $1 AND ${visibleIn('t', 2)}`, [cnpj, companyId])
       if (!supplier) {
         const s = nfe.supplier
         supplier = await one(
           tx,
-          `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, ie, zip, street, number, complement, district, city_code)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+          `INSERT INTO suppliers (cnpj, name, trade_name, email, phone, city, uf, ie, zip, street, number, complement, district, city_code, branch_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
           [cnpj, s.name, s.tradeName, s.email, s.phone ? digits(s.phone).slice(0, 11) || null : null, s.city, s.uf, s.ie ? (s.ie.toUpperCase() === 'ISENTO' ? 'ISENTO' : digits(s.ie)) : null,
-            s.zip ? digits(s.zip).slice(0, 8) || null : null, s.street, s.number, s.complement, s.district, s.cityCode && /^\d{7}$/.test(s.cityCode) ? s.cityCode : null],
+            s.zip ? digits(s.zip).slice(0, 8) || null : null, s.street, s.number, s.complement, s.district, s.cityCode && /^\d{7}$/.test(s.cityCode) ? s.cityCode : null,
+            await branchForInsert(tx, 'suppliers', companyId)],
         )
       }
 
@@ -103,9 +110,9 @@ export class InvoicesController {
 
       const { id } = (await one(
         tx,
-        `INSERT INTO invoices (access_key, number, series, issue_date, supplier_id, purchase_order_id, total, xml, created_by, recipient_document)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-        [nfe.accessKey, nfe.number, nfe.series, nfe.issueDate, supplier!.id, orderId, nfe.total, dto.xml, me.id, digits(nfe.recipientDocument) || null],
+        `INSERT INTO invoices (access_key, number, series, issue_date, supplier_id, purchase_order_id, total, xml, created_by, recipient_document, company_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        [nfe.accessKey, nfe.number, nfe.series, nfe.issueDate, supplier!.id, orderId, nfe.total, dto.xml, me.id, recipient || null, companyId],
       ))!
       for (const item of nfe.items) {
         await tx.query(
@@ -204,7 +211,8 @@ export class InvoicesController {
     if (!items.length) return
 
     // Candidatos: produtos mais parecidos com cada item + produtos do pedido.
-    const products = await this.db.query(`SELECT id, sku, name, ncm, unit FROM products WHERE active`)
+    const inv = await one(this.db, `SELECT company_id FROM invoices WHERE id = $1`, [id])
+    const products = await this.db.query(`SELECT id, sku, name, ncm, unit FROM products t WHERE t.active AND ${visibleIn('t', 1)}`, [inv?.company_id ?? null])
     const orderProducts = await this.db.query(
       `SELECT DISTINCT oi.product_id FROM purchase_order_items oi JOIN invoices i ON i.purchase_order_id = oi.order_id WHERE i.id = $1`,
       [id],
@@ -265,25 +273,10 @@ export class InvoicesController {
       for (const item of items) {
         const qty = Number(item.quantity)
         if (item.updates_stock) {
-          const product = (await one(tx, `SELECT stock, cost_price FROM products WHERE id = $1 FOR UPDATE`, [item.product_id]))!
-          const stock = Number(product.stock)
-          const cost = Number(product.cost_price)
-          if (isReturn) {
-            // Devolução de venda: a mercadoria volta pelo custo médio atual (não mexe no custo).
-            await tx.query(`UPDATE products SET stock = stock + $2, updated_at = now() WHERE id = $1`, [item.product_id, qty])
-            await tx.query(
-              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id, cost_center_id) VALUES ($1, $2, $3, 'devolucao_venda', $4, $5, $6)`,
-              [item.product_id, qty, cost, reference, me.id, invoice.cost_center_id],
-            )
-          } else {
-            const unitCost = qty > 0 ? Number(item.total) / qty : Number(item.unit_price)
-            const newCost = stock > 0 ? (stock * cost + qty * unitCost) / (stock + qty) : unitCost
-            await tx.query(`UPDATE products SET stock = stock + $2, cost_price = $3, updated_at = now() WHERE id = $1`, [item.product_id, qty, newCost])
-            await tx.query(
-              `INSERT INTO stock_movements (product_id, quantity, unit_cost, kind, reference, user_id, cost_center_id) VALUES ($1, $2, $3, 'entrada_nf', $4, $5, $6)`,
-              [item.product_id, qty, unitCost, reference, me.id, invoice.cost_center_id],
-            )
-          }
+          // Estoque da filial que recebeu a nota. Devolução de venda volta pelo custo médio (não mexe no custo).
+          const base = { productId: item.product_id, companyId: invoice.company_id, quantity: qty, reference, userId: me.id, costCenterId: invoice.cost_center_id }
+          if (isReturn) await moveStock(tx, { ...base, kind: 'devolucao_venda' })
+          else await moveStock(tx, { ...base, kind: 'entrada_nf', unitCost: qty > 0 ? Number(item.total) / qty : Number(item.unit_price), averageCost: true })
         }
         if (!isReturn && item.supplier_code) {
           await tx.query(
@@ -312,10 +305,10 @@ export class InvoicesController {
       const amount = itemsTotal > 0 ? round2(Number(invoice.total) * (financialItems / itemsTotal)) : 0
       const nfe = parseNfe(invoice.xml)
       const issueDate = (nfe.issueDate ?? '').slice(0, 10) || today()
-      const company = await one(tx, `SELECT id FROM companies WHERE document = $1`, [invoice.recipient_document])
+      const company = invoice.company_id ? { id: invoice.company_id } : await one(tx, `SELECT id FROM companies WHERE document = $1`, [invoice.recipient_document])
         ?? await one(tx, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`)
       let customerId: string | null = null
-      if (isReturn) customerId = await this.customerFromSupplier(tx, invoice.supplier_id)
+      if (isReturn) customerId = await this.customerFromSupplier(tx, invoice.supplier_id, company?.id ?? null)
       if (amount > 0) {
         if (isReturn) {
           await createTitles(tx, {
@@ -385,14 +378,14 @@ export class InvoicesController {
   }
 
   // Devolução de venda: quem emitiu a nota é o cliente. Acha pelo CNPJ/CPF ou cadastra a partir do emitente.
-  private async customerFromSupplier(tx: Tx, supplierId: string) {
+  private async customerFromSupplier(tx: Tx, supplierId: string, branch: string | null) {
     const s = (await one(tx, `SELECT cnpj, name, trade_name, email, phone, city, uf FROM suppliers WHERE id = $1`, [supplierId]))!
-    const existing = await one(tx, `SELECT id FROM customers WHERE document = $1`, [s.cnpj])
+    const existing = await one(tx, `SELECT id FROM customers t WHERE t.document = $1 AND ${visibleIn('t', 2)}`, [s.cnpj, branch])
     if (existing) return existing.id as string
     const created = await one(
       tx,
-      `INSERT INTO customers (document, name, trade_name, email, phone, city, uf, taxpayer) VALUES ($1, $2, $3, $4, $5, $6, $7, '1') RETURNING id`,
-      [s.cnpj, s.name, s.trade_name, s.email, s.phone, s.city, s.uf],
+      `INSERT INTO customers (document, name, trade_name, email, phone, city, uf, taxpayer, branch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, '1', $8) RETURNING id`,
+      [s.cnpj, s.name, s.trade_name, s.email, s.phone, s.city, s.uf, await branchForInsert(tx, 'customers', branch)],
     )
     return created!.id as string
   }

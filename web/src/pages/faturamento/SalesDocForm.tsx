@@ -7,6 +7,7 @@ import { BrNumber, Money } from '../../components/inputs'
 import { Loading, PageHeader, ProductSelect, Status } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useUser } from '../../lib/auth'
+import { branchLabel } from '../../lib/types'
 import { useOptions } from '../../lib/catalog'
 import { useCostCenters } from '../../lib/costCenters'
 import { can, cnpj, date, money, price, qty } from '../../lib/format'
@@ -32,13 +33,15 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
   const customers = useOptions('customers')
   const terms = useOptions('payment-terms')
   const tables = useOptions('price-tables')
-  const companies = useOptions('companies')
+  // Só as filiais liberadas para o usuário; o documento novo começa na filial atual (topo da tela).
+  const allCompanies = useOptions('companies')
+  const companies = user.branches?.length ? user.branches.map((b) => ({ value: b.id, label: branchLabel(b) })) : allCompanies
   const operations = useOptions('operation-types')
   const costCenters = useCostCenters()
   const [costCenterId, setCostCenterId] = useState<string | null>(null)
   const [doc, setDoc] = useState<SalesDoc | null>(null)
   const [loaded, setLoaded] = useState(!id)
-  const [form, setForm] = useState({ customerId: null as string | null, paymentTermId: null as string | null, priceTableId: null as string | null, companyId: null as string | null, operationTypeId: null as string | null, validUntil: '', freight: 0, discount: 0, notes: '' })
+  const [form, setForm] = useState({ customerId: null as string | null, paymentTermId: null as string | null, priceTableId: null as string | null, companyId: (user.branchId ?? null) as string | null, operationTypeId: null as string | null, validUntil: '', freight: 0, discount: 0, notes: '' })
   const [lines, setLines] = useState<Line[]>([])
   const [adding, setAdding] = useState<Product | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -178,7 +181,7 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
           <Select label="Condição de pagamento" data={terms} value={form.paymentTermId} onChange={(v) => setForm({ ...form, paymentTermId: v })} required disabled={locked} allowDeselect={false} />
           <Select label="Tabela de preço" placeholder="Preço de venda do produto" data={tables} value={form.priceTableId} onChange={(v) => setForm({ ...form, priceTableId: v })} clearable disabled={locked} />
           {kind === 'quote' && <TextInput type="date" label="Validade" placeholder="Padrão do parâmetro MV_ORCVAL" value={form.validUntil} onChange={(e) => setForm({ ...form, validUntil: e.currentTarget.value })} disabled={locked} />}
-          <Select label="Empresa/filial" placeholder="Matriz" data={companies} value={form.companyId} onChange={(v) => setForm({ ...form, companyId: v })} clearable disabled={locked} />
+          <Select label="Empresa/filial" placeholder="Filial atual" data={companies} value={form.companyId} onChange={(v) => setForm({ ...form, companyId: v })} allowDeselect={false} disabled={locked} />
           <Select label="Tipo de operação" placeholder="S01 · Venda de mercadoria" data={operations.filter((o) => o.label.startsWith('S'))} value={form.operationTypeId} onChange={(v) => setForm({ ...form, operationTypeId: v })} clearable disabled={locked} />
           <Select label="Centro de custo" placeholder="Sem centro de custo" data={costCenters} value={costCenterId} onChange={setCostCenterId} clearable searchable disabled={locked} />
           {doc && <div><Text size="sm" fw={500}>Cliente</Text><Text size="sm" c="dimmed" ff="monospace">{cnpj(doc.customerDocument)}{doc.customerUf && ` · ${doc.customerUf}`} · {{ '1': 'contribuinte', '2': 'isento', '9': 'não contribuinte' }[doc.customerTaxpayer as '1']}</Text></div>}

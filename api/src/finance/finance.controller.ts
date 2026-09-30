@@ -7,6 +7,7 @@ import { requirePermission } from '../common/access'
 import { numbers, one } from '../common/db'
 import { found } from '../purchasing/purchasing.helpers'
 import type { User } from '../users/user.entity'
+import { CurrentBranch, ensureBranchAccess, visibleIn } from '../branches/branch.context'
 import { checkCostCenter } from './cost-centers'
 import { addDays, addMonths, BALANCE_SIGN, CASH_SIGN, createTitles, recalcTitle, round2, splitAmount, today } from './finance.logic'
 
@@ -85,7 +86,7 @@ export class FinanceController {
   constructor(private readonly db: DataSource) {}
 
   @Get('titles')
-  async list(@CurrentUser() me: User, @Query() q: ListQuery) {
+  async list(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: ListQuery) {
     requirePermission(me, 'financeiro')
     const status = q.status ?? 'aberto'
     const rows = await this.db.query(
@@ -97,8 +98,9 @@ export class FinanceController {
          AND ($3::date IS NULL OR t.due_date >= $3) AND ($4::date IS NULL OR t.due_date <= $4)
          AND ($5::text IS NULL OR t.description ILIKE '%' || $5 || '%' OR t.document ILIKE '%' || $5 || '%' OR coalesce(c.name, s.name) ILIKE '%' || $5 || '%')
          AND ($6::uuid IS NULL OR t.cost_center_id = $6)
+         AND ($7::uuid IS NULL OR t.company_id = $7)
        ORDER BY t.due_date, t.created_at LIMIT 1000`,
-      [q.kind, status, q.from ?? null, q.to ?? null, q.q?.trim() || null, q.costCenterId ?? null],
+      [q.kind, status, q.from ?? null, q.to ?? null, q.q?.trim() || null, q.costCenterId ?? null, branch],
     )
     return rows.map(money)
   }
@@ -110,13 +112,14 @@ export class FinanceController {
   }
 
   @Post('titles')
-  async create(@CurrentUser() me: User, @Body() dto: TitleDto) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: TitleDto) {
     requirePermission(me, 'financeiro')
     if (dto.kind === 'R' && dto.supplierId) throw new BadRequestException('Conta a receber é de um cliente')
     if (dto.kind === 'P' && dto.customerId) throw new BadRequestException('Conta a pagar é de um fornecedor')
     const n = dto.installments ?? 1
     const amounts = dto.mode === 'repetir' ? Array(n).fill(round2(dto.amount)) : splitAmount(round2(dto.amount), n)
-    const company = dto.companyId ?? (await one(this.db, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`))?.id ?? null
+    if (dto.companyId) await ensureBranchAccess(this.db, me, dto.companyId)
+    const company = dto.companyId ?? branch ?? (await one(this.db, `SELECT id FROM companies WHERE active ORDER BY is_head DESC, code LIMIT 1`))?.id ?? null
     const costCenterId = await checkCostCenter(this.db, dto.costCenterId)
     const ids = await this.db.transaction((tx) =>
       createTitles(tx, {
@@ -190,7 +193,7 @@ export class FinanceController {
 
   // Números do topo da tela.
   @Get('summary')
-  async summary(@CurrentUser() me: User) {
+  async summary(@CurrentUser() me: User, @CurrentBranch() branch: string | null) {
     requirePermission(me, 'financeiro')
     const [t] = await this.db.query(
       `SELECT
@@ -200,23 +203,24 @@ export class FinanceController {
          coalesce(sum(bal) FILTER (WHERE kind = 'P'), 0) AS "payable",
          coalesce(sum(bal) FILTER (WHERE kind = 'P' AND due_date < d), 0) AS "payableOverdue",
          coalesce(sum(bal) FILTER (WHERE kind = 'P' AND due_date BETWEEN d AND d + 7), 0) AS "payableWeek"
-       FROM (SELECT t.kind, t.due_date, (t.amount - t.paid_amount) * ${BALANCE_SIGN()} AS bal FROM financial_titles t WHERE t.status IN ('aberto', 'parcial')) titles,
+       FROM (SELECT t.kind, t.due_date, (t.amount - t.paid_amount) * ${BALANCE_SIGN()} AS bal FROM financial_titles t
+             WHERE t.status IN ('aberto', 'parcial') AND ($1::uuid IS NULL OR t.company_id = $1)) titles,
             (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d) today
-       WHERE true`,
+       WHERE true`, [branch],
     )
-    const accounts = await this.balances()
+    const accounts = await this.balances(branch)
     return { ...numbers(t, 'receivable', 'receivableOverdue', 'receivableWeek', 'payable', 'payableOverdue', 'payableWeek'), accounts, cash: round2(accounts.reduce((s, a) => s + a.balance, 0)) }
   }
 
   @Get('bank-balances')
-  async bankBalances(@CurrentUser() me: User) {
+  async bankBalances(@CurrentUser() me: User, @CurrentBranch() branch: string | null) {
     requirePermission(me, 'financeiro')
-    return this.balances()
+    return this.balances(branch)
   }
 
   // Fluxo de caixa dia a dia: realizado (baixas) e previsto (títulos em aberto; atrasados entram no primeiro dia).
   @Get('cash-flow')
-  async cashFlow(@CurrentUser() me: User, @Query() q: FlowQuery) {
+  async cashFlow(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query() q: FlowQuery) {
     requirePermission(me, 'financeiro')
     const from = q.from ?? today()
     const to = q.to ?? addDays(from, 30)
@@ -224,22 +228,23 @@ export class FinanceController {
     if (Date.parse(to) - Date.parse(from) > 400 * 86400e3) throw new BadRequestException('Período máximo de 400 dias')
     const account = q.bankAccountId ?? null
     const [opening] = await this.db.query(
-      `SELECT coalesce((SELECT sum(opening_balance) FROM bank_accounts WHERE active AND ($2::uuid IS NULL OR id = $2)), 0)
+      `SELECT coalesce((SELECT sum(opening_balance) FROM bank_accounts a WHERE a.active AND ($2::uuid IS NULL OR a.id = $2) AND ${visibleIn('a', 3)}), 0)
             + coalesce((SELECT sum(p.amount * ${CASH_SIGN()}) FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id
-                        WHERE p.paid_at < $1 AND ($2::uuid IS NULL OR p.bank_account_id = $2)), 0) AS balance`,
-      [from, account],
+                        WHERE p.paid_at < $1 AND ($2::uuid IS NULL OR p.bank_account_id = $2) AND ($3::uuid IS NULL OR t.company_id = $3)), 0) AS balance`,
+      [from, account, branch],
     )
     const realized = await this.db.query(
       `SELECT p.paid_at::text AS day, sum(p.amount) FILTER (WHERE ${CASH_SIGN()} = 1) AS "in", sum(p.amount) FILTER (WHERE ${CASH_SIGN()} = -1) AS "out"
        FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id
-       WHERE p.paid_at BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR p.bank_account_id = $3) GROUP BY 1`,
-      [from, to, account],
+       WHERE p.paid_at BETWEEN $1 AND $2 AND ($3::uuid IS NULL OR p.bank_account_id = $3) AND ($4::uuid IS NULL OR t.company_id = $4) GROUP BY 1`,
+      [from, to, account, branch],
     )
     const projected = await this.db.query(
       `SELECT greatest(t.due_date, $1::date)::text AS day, sum(t.amount - t.paid_amount) FILTER (WHERE ${CASH_SIGN()} = 1) AS "in",
               sum(t.amount - t.paid_amount) FILTER (WHERE ${CASH_SIGN()} = -1) AS "out"
-       FROM financial_titles t WHERE t.status IN ('aberto', 'parcial') AND t.due_date <= $2 AND greatest(t.due_date, (now() AT TIME ZONE 'America/Sao_Paulo')::date) >= $1 GROUP BY 1`,
-      [from, to],
+       FROM financial_titles t WHERE t.status IN ('aberto', 'parcial') AND t.due_date <= $2 AND greatest(t.due_date, (now() AT TIME ZONE 'America/Sao_Paulo')::date) >= $1
+         AND ($3::uuid IS NULL OR t.company_id = $3) GROUP BY 1`,
+      [from, to, branch],
     )
     const byDay = (rows: any[]) => new Map(rows.map((r) => [r.day, { in: Number(r.in ?? 0), out: Number(r.out ?? 0) }]))
     const r = byDay(realized)
@@ -255,12 +260,12 @@ export class FinanceController {
     return { from, to, opening: round2(Number(opening.balance)), closing: balance, days }
   }
 
-  private async balances() {
+  private async balances(branch: string | null) {
     const rows = await this.db.query(
       `SELECT a.id, a.code, a.name, a.kind, a.bank_code AS "bankCode",
               a.opening_balance + coalesce((SELECT sum(p.amount * ${CASH_SIGN()})
                                             FROM financial_payments p JOIN financial_titles t ON t.id = p.title_id WHERE p.bank_account_id = a.id), 0) AS balance
-       FROM bank_accounts a WHERE a.active ORDER BY a.code`,
+       FROM bank_accounts a WHERE a.active AND ${visibleIn('a', 1)} ORDER BY a.code`, [branch],
     )
     return rows.map((r: any) => numbers(r, 'balance')) as { id: string; code: string; name: string; kind: string; bankCode: string | null; balance: number }[]
   }

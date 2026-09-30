@@ -12,6 +12,7 @@ import { computeTaxes, loadTaxContext } from '../taxes/tax-engine'
 import { decodeCsv, readClassTribCsv, upsertClassTrib } from '../taxes/class-trib'
 import { SettingsService } from '../settings/settings.service'
 import type { User } from '../users/user.entity'
+import { allowedBranches, branchList, CurrentBranch } from '../branches/branch.context'
 
 class PriceItemDto {
   @IsUUID() productId: string
@@ -63,15 +64,26 @@ export class ExtrasController {
 
   // ---- Estoque: movimentações
   @Get('stock/movements')
-  async movements(@Query('productId') productId?: string) {
+  async movements(@CurrentBranch() branch: string | null, @Query('productId') productId?: string) {
     const rows = await this.db.query(
       `SELECT m.id, m.quantity, m.unit_cost AS "unitCost", m.kind, m.reference, m.created_at AS "createdAt",
-              p.sku, p.name AS "productName", p.unit, u.name AS "userName"
-       FROM stock_movements m JOIN products p ON p.id = m.product_id LEFT JOIN users u ON u.id = m.user_id
-       WHERE ($1::uuid IS NULL OR m.product_id = $1) ORDER BY m.created_at DESC LIMIT 500`,
-      [productId || null],
+              p.sku, p.name AS "productName", p.unit, u.name AS "userName", co.code AS "companyCode"
+       FROM stock_movements m JOIN products p ON p.id = m.product_id LEFT JOIN users u ON u.id = m.user_id LEFT JOIN companies co ON co.id = m.company_id
+       WHERE ($1::uuid IS NULL OR m.product_id = $1) AND ($2::uuid IS NULL OR m.company_id = $2) ORDER BY m.created_at DESC LIMIT 500`,
+      [productId || null, branch],
     )
     return rows.map((r: any) => numbers(r, 'quantity', 'unitCost'))
+  }
+
+  // ---- Estoque: saldo do produto em cada filial liberada para o usuário
+  @Get('stock/branches')
+  async stockByBranch(@CurrentUser() me: User, @Query('productId', ParseUUIDPipe) productId: string) {
+    const allowed = allowedBranches(me, await branchList(this.db))
+    const rows = await this.db.query(`SELECT company_id AS "companyId", quantity, avg_cost AS "avgCost" FROM product_stock WHERE product_id = $1`, [productId])
+    return allowed.map((b) => {
+      const r = rows.find((x: any) => x.companyId === b.id)
+      return { companyId: b.id, label: `${b.code} · ${b.tradeName || b.name}`, quantity: Number(r?.quantity ?? 0), avgCost: Number(r?.avgCost ?? 0) }
+    })
   }
 
   // ---- Matriz fiscal: qual TES e CFOP usar numa operação; com produto e valor, também os impostos

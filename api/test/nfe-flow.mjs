@@ -16,8 +16,10 @@ const run = Date.now().toString(36).slice(-5).toUpperCase()
 const SCHEMAS = resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/@brasil-fiscal/nfe/schemas')
 let passed = 0
 const ok = (msg) => { passed++; console.log('  ✓', msg) }
+// Filial das requisições (cabeçalho X-Branch-Id), definida quando o teste cria a empresa dele.
+let BRANCH = null
 async function request(token, method, path, body) {
-  return fetch(API + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
+  return fetch(API + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(BRANCH ? { 'X-Branch-Id': BRANCH } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
 }
 async function call(token, method, path, body, expect) {
   const res = await request(token, method, path, body)
@@ -135,6 +137,7 @@ try {
     code: String(1000 + Math.floor(Math.random() * 9000)), document: doc, name: `Vanguard NF-e ${run} & Cia`, tradeName: 'Vanguard', uf: 'SP', taxRegime: 'presumido',
     ie: '110042490114', zip: '01001000', street: 'Praça da Sé', number: '100', district: 'Sé', city: 'São Paulo', cityCode: '3550308', phone: '1133334444',
   })
+  BRANCH = company.id // o estoque é por filial: o teste trabalha na empresa que criou
   const custSP = await call(admin, 'POST', '/catalog/customers', { document: cnpj(r12()), name: `Cliente NF-e ${run}`, uf: 'SP', taxpayer: '1', ie: '110042490114',
     zip: '01310100', street: 'Av. Paulista', number: '1000', district: 'Bela Vista', city: 'São Paulo', cityCode: '3550308', email: 'compras@cliente.com.br' })
   const custBA = await call(admin, 'POST', '/catalog/customers', { document: '52998224725', name: `Consumidor BA ${run}`, uf: 'BA', taxpayer: '9',

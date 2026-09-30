@@ -5,6 +5,7 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { can, isAdmin, requirePermission } from '../common/access'
 import { numbers, one } from '../common/db'
 import type { User } from '../users/user.entity'
+import { allowedBranches, branchList, CurrentBranch } from '../branches/branch.context'
 import { nextLevel } from './approval'
 import { code, found, requireBuyerOf } from './purchasing.helpers'
 
@@ -30,16 +31,18 @@ export class OrdersController {
   constructor(private readonly db: DataSource) {}
 
   @Get()
-  async list(@CurrentUser() me: User, @Query('status') status?: string) {
+  async list(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Query('status') status?: string) {
     if (!can(me, 'comprador') && !can(me, 'aprovador')) throw new ForbiddenException()
-    const rows = await this.db.query(`${SELECT} WHERE ($1::text IS NULL OR o.status = $1) ORDER BY o.number DESC LIMIT 300`, [status || null])
+    const rows = await this.db.query(`${SELECT} WHERE ($1::text IS NULL OR o.status = $1) AND ($2::uuid IS NULL OR o.company_id = $2) ORDER BY o.number DESC LIMIT 300`, [status || null, branch])
     return Promise.all(rows.map((r: any) => this.shape(this.db, r, me)))
   }
 
   // Pedidos cujo próximo nível de aprovação inclui o usuário.
   @Get('pending-approval')
   async pending(@CurrentUser() me: User) {
-    const rows = await this.db.query(`${SELECT} WHERE o.status = 'aguardando_aprovacao' ORDER BY o.number`)
+    // Aprovação: pedidos de todas as filiais liberadas para o aprovador (não só a atual).
+    const allowed = allowedBranches(me, await branchList(this.db)).map((b) => b.id)
+    const rows = await this.db.query(`${SELECT} WHERE o.status = 'aguardando_aprovacao' AND (o.company_id IS NULL OR o.company_id = ANY($1::uuid[])) ORDER BY o.number`, [allowed])
     const shaped = await Promise.all(rows.map((r: any) => this.shape(this.db, r, me)))
     return shaped.filter((o) => o.canApprove)
   }

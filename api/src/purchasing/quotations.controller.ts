@@ -6,6 +6,7 @@ import { CurrentUser } from '../auth/current-user.decorator'
 import { requirePermission } from '../common/access'
 import { numbers, one } from '../common/db'
 import type { User } from '../users/user.entity'
+import { CurrentBranch } from '../branches/branch.context'
 import { createOrder } from './orders.logic'
 import { buyerGroupIds, code, found, requireBuyerOf } from './purchasing.helpers'
 
@@ -70,7 +71,7 @@ export class QuotationsController {
   constructor(private readonly db: DataSource) {}
 
   @Get()
-  async list(@CurrentUser() me: User) {
+  async list(@CurrentUser() me: User, @CurrentBranch() branch: string | null) {
     requirePermission(me, 'comprador')
     const groups = await buyerGroupIds(this.db, me)
     const rows = await this.db.query(
@@ -78,9 +79,9 @@ export class QuotationsController {
               (SELECT count(*)::int FROM quotation_items WHERE quotation_id = q.id) AS "itemCount",
               (SELECT count(*)::int FROM quotation_suppliers WHERE quotation_id = q.id) AS "supplierCount"
        FROM quotations q JOIN purchase_groups g ON g.id = q.purchase_group_id JOIN users u ON u.id = q.buyer_id
-       WHERE $1::uuid[] IS NULL OR q.purchase_group_id = ANY($1)
+       WHERE ($1::uuid[] IS NULL OR q.purchase_group_id = ANY($1)) AND ($2::uuid IS NULL OR q.company_id = $2)
        ORDER BY q.number DESC LIMIT 300`,
-      [groups],
+      [groups, branch],
     )
     return rows.map((r: any) => ({ ...r, code: code('COT', r.number) }))
   }
@@ -92,11 +93,11 @@ export class QuotationsController {
   }
 
   @Post()
-  async create(@CurrentUser() me: User, @Body() dto: CreateQuotationDto) {
+  async create(@CurrentUser() me: User, @CurrentBranch() branch: string | null, @Body() dto: CreateQuotationDto) {
     requirePermission(me, 'comprador')
     return this.db.transaction(async (tx) => {
       const items = await tx.query(
-        `SELECT i.id, i.product_id, i.description, i.unit, i.quantity, i.status, r.purchase_group_id, r.id AS request_id
+        `SELECT i.id, i.product_id, i.description, i.unit, i.quantity, i.status, r.purchase_group_id, r.id AS request_id, r.company_id
          FROM purchase_request_items i JOIN purchase_requests r ON r.id = i.request_id
          WHERE i.id = ANY($1) FOR UPDATE OF i`,
         [dto.requestItemIds],
@@ -110,8 +111,11 @@ export class QuotationsController {
       const suppliers = await tx.query(`SELECT id FROM suppliers WHERE id = ANY($1) AND active`, [dto.supplierIds])
       if (suppliers.length !== dto.supplierIds.length) throw new BadRequestException('Fornecedor não encontrado ou inativo')
 
-      const { id } = (await one(tx, `INSERT INTO quotations (purchase_group_id, buyer_id, deadline, notes) VALUES ($1, $2, $3, $4) RETURNING id`, [
-        groupIds[0], me.id, dto.deadline || null, dto.notes || null,
+      // A cotação é da filial das solicitações (uma filial por cotação).
+      const companies = [...new Set(items.map((i: any) => i.company_id ?? null))]
+      if (companies.length > 1) throw new BadRequestException('Os itens de uma cotação devem ser da mesma filial')
+      const { id } = (await one(tx, `INSERT INTO quotations (purchase_group_id, buyer_id, deadline, notes, company_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [
+        groupIds[0], me.id, dto.deadline || null, dto.notes || null, companies[0] ?? branch,
       ]))!
       for (const item of items) {
         await tx.query(
@@ -199,6 +203,7 @@ export class QuotationsController {
           purchaseGroupId: quotation.purchase_group_id,
           quotationId: id,
           buyerId: me.id,
+          companyId: quotation.company_id,
           paymentTerms: s.paymentTerms,
           deliveryDays: s.deliveryDays,
           freight: s.freight,
@@ -237,7 +242,7 @@ export class QuotationsController {
 
   private async openForBuyer(tx: EntityManager, me: User, id: string) {
     requirePermission(me, 'comprador')
-    const quotation = found(await one(tx, `SELECT purchase_group_id, status FROM quotations WHERE id = $1 FOR UPDATE`, [id]), 'Cotação não encontrada')
+    const quotation = found(await one(tx, `SELECT purchase_group_id, status, company_id FROM quotations WHERE id = $1 FOR UPDATE`, [id]), 'Cotação não encontrada')
     await requireBuyerOf(tx, me, quotation.purchase_group_id)
     if (quotation.status !== 'aberta') throw new BadRequestException('A cotação não está mais aberta')
     return quotation

@@ -49,6 +49,10 @@ export class Product {
   @Column({ name: 'class_trib_id', type: 'uuid', nullable: true })
   classTribId: string | null
 
+  // Filial dona do produto quando o cadastro é exclusivo; vazio = compartilhado
+  @Column({ name: 'branch_id', type: 'uuid', nullable: true })
+  branchId: string | null
+
   // Miniatura da foto principal (data URL pequena) para as listas
   @Column({ type: 'text', nullable: true })
   thumb: string | null

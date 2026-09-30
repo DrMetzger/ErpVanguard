@@ -14,7 +14,17 @@ export const getToken = storage.get
 // Identificador do aparelho (só no app do celular): o servidor bloqueia aparelho por aparelho.
 let deviceId: string | null = null
 export const setDeviceId = (id: string | null) => { deviceId = id }
-const deviceHeader = (): Record<string, string> => (deviceId ? { 'X-Device-Id': deviceId } : {})
+// Filial escolhida no topo da tela (guardada no aparelho); o servidor confere se está liberada para o usuário.
+const BRANCH_KEY = 'vanguard.branch'
+let branchId: string | null = (() => { try { return localStorage.getItem(BRANCH_KEY) } catch { return null } })()
+export const getBranchId = () => branchId
+export function setBranchId(id: string | null) {
+  branchId = id
+  try { if (id) localStorage.setItem(BRANCH_KEY, id); else localStorage.removeItem(BRANCH_KEY) } catch { /* modo privado */ }
+}
+const deviceHeader = (branch: string | null = branchId): Record<string, string> => ({ ...(deviceId ? { 'X-Device-Id': deviceId } : {}), ...(branch ? { 'X-Branch-Id': branch } : {}) })
+// Tela guardada para uso sem internet: separada por filial.
+const cacheKey = (path: string) => (branchId ? `${branchId}|${path}` : path)
 // Aparelho bloqueado pelo administrador: sai do sistema e apaga o que estava guardado no celular.
 function onBlocked(data: any) {
   setToken(null)
@@ -31,7 +41,7 @@ export class ApiError extends Error {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
-export async function api<T = unknown>(path: string, options: { method?: Method; body?: unknown } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, options: { method?: Method; body?: unknown } = {}, retried = false): Promise<T> {
   const { method = 'GET', body } = options
   const headers: Record<string, string> = { Accept: 'application/json', ...deviceHeader() }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -51,12 +61,12 @@ export async function api<T = unknown>(path: string, options: { method?: Method;
       // Primeiro a base sincronizada do celular (produtos, clientes, tabelas…), depois a última tela guardada.
       const local = await localAnswer(path).catch(() => null)
       if (local) { const at = syncState().lastSync; if (at) noteCacheUsed(at); return local.data as T }
-      const hit = await cacheGet<T>(path)
+      const hit = await cacheGet<T>(cacheKey(path))
       if (hit) { noteCacheUsed(hit.at); return hit.data }
       throw new ApiError(0, 'Sem internet e esta tela ainda não foi aberta neste aparelho')
     }
     if (canQueue(path) && token) {
-      await enqueue({ method, path, body, key: key!, label: describe(method, path) })
+      await enqueue({ method, path, body, key: key!, label: describe(method, path), branch: branchId })
       throw new QueuedOffline()
     }
     throw new ApiError(0, 'Sem internet: esta ação precisa de conexão (tente de novo quando voltar)')
@@ -71,11 +81,17 @@ export async function api<T = unknown>(path: string, options: { method?: Method;
 
   const data = await res.json().catch(() => null)
   if (res.status === 403 && data?.code === 'DEVICE_BLOCKED') onBlocked(data)
+  // Filial guardada que deixou de estar liberada: volta para a padrão do usuário e tenta de novo.
+  if (res.status === 403 && data?.code === 'BRANCH_DENIED' && branchId && !retried) {
+    setBranchId(null)
+    window.dispatchEvent(new Event('vanguard:branch-reset'))
+    return api<T>(path, options, true)
+  }
   if (!res.ok) {
     const message = Array.isArray(data?.message) ? data.message.join('\n') : data?.message
     throw new ApiError(res.status, message || 'Erro ao comunicar com o servidor', data)
   }
-  if (method === 'GET') void cachePut(path, data)
+  if (method === 'GET') void cachePut(cacheKey(path), data)
   return data as T
 }
 
@@ -86,7 +102,8 @@ setSender(async (w) => {
   try {
     const res = await fetch(`${API_URL}/api${w.path}`, {
       method: w.method,
-      headers: { Accept: 'application/json', ...deviceHeader(), Authorization: `Bearer ${token}`, 'Idempotency-Key': w.key, ...(w.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      // Vai para a filial em que a gravação foi feita (mesmo que o usuário tenha trocado depois).
+      headers: { Accept: 'application/json', ...deviceHeader(w.branch === undefined ? branchId : w.branch), Authorization: `Bearer ${token}`, 'Idempotency-Key': w.key, ...(w.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: w.body === undefined ? undefined : JSON.stringify(w.body),
     })
     if (res.ok) return 'ok'

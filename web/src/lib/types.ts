@@ -8,7 +8,14 @@ export interface User {
   permissions: Permission[]
   avatar: string | null
   active: boolean
+  branchIds?: string[]
+  defaultBranchId?: string | null
+  branches?: Branch[] // filiais liberadas (vem no login e em /auth/me)
+  branchId?: string | null // filial da sessão
 }
+
+export interface Branch { id: string; code: string; name: string; tradeName: string | null; uf: string; isHead: boolean }
+export const branchLabel = (b: Pick<Branch, 'code' | 'name' | 'tradeName'>) => `${b.code} · ${b.tradeName || b.name}`
 
 export interface Product {
   id: string
@@ -19,7 +26,9 @@ export interface Product {
   unit: string
   costPrice: number
   salePrice: number
-  stock: number
+  stock: number // saldo na filial atual
+  stockTotal?: number // soma de todas as filiais
+  branchCost?: number // custo médio na filial atual
   minStock: number
   typeId: string | null
   groupId: string | null

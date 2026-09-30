@@ -5,12 +5,16 @@ import { useState } from 'react'
 import { Empty, Loading } from '../components/ui'
 import { date, money, price, qty } from '../lib/format'
 import { useApi } from '../lib/hooks'
+import { useUser } from '../lib/auth'
+import { branchLabel } from '../lib/types'
 import type { Product } from '../lib/types'
 
 interface Movement { id: string; quantity: number; unitCost: number | null; kind: string; reference: string | null; createdAt: string; sku: string; productName: string; unit: string; userName: string | null }
-const KIND: Record<string, string> = { entrada_nf: 'Entrada por nota' }
+const KIND: Record<string, string> = { entrada_nf: 'Entrada por nota', saida_nf: 'Saída por nota', devolucao_venda: 'Devolução de venda', cancelamento_nf: 'Cancelamento de nota', ajuste: 'Ajuste' }
 
 export default function Stock() {
+  const user = useUser()
+  const branch = user.branches?.find((b) => b.id === user.branchId)
   const [view, setView] = useState('saldos')
   const [query, setQuery] = useState('')
   const [q] = useDebouncedValue(query.trim(), 250)
@@ -23,12 +27,13 @@ export default function Stock() {
   const stats = [
     { label: 'Itens em estoque', value: all.filter((p) => p.stock > 0).length, icon: IconBox, color: 'brand' },
     { label: 'Abaixo do mínimo', value: all.filter((p) => p.stock <= p.minStock).length, icon: IconAlertTriangle, color: 'yellow' },
-    { label: 'Valor do estoque (custo)', value: money(all.reduce((s, p) => s + p.stock * p.costPrice, 0)), icon: IconCash, color: 'teal' },
+    { label: 'Valor do estoque (custo)', value: money(all.reduce((s, p) => s + p.stock * (p.branchCost ?? p.costPrice), 0)), icon: IconCash, color: 'teal' },
   ]
 
   return (
     <>
-      <Title order={2} mb="md">Estoque</Title>
+      <Title order={2}>Estoque</Title>
+      <Text size="sm" c="dimmed" mb="md">{branch ? `Saldos e movimentações da filial ${branchLabel(branch)} (troque a filial no topo da tela)` : 'Saldos e movimentações'}</Text>
       <SimpleGrid cols={{ base: 1, sm: 3 }} mb="lg">
         {stats.map((s) => (
           <Card key={s.label} p="md">
@@ -60,8 +65,8 @@ export default function Stock() {
                       <Table.Td>{p.name}</Table.Td>
                       <Table.Td ta="right">{p.stock <= p.minStock ? <Badge color="yellow" variant="light">{qty(p.stock)} {p.unit}</Badge> : `${qty(p.stock)} ${p.unit}`}</Table.Td>
                       <Table.Td ta="right">{qty(p.minStock)}</Table.Td>
-                      <Table.Td ta="right">{price(p.costPrice)}</Table.Td>
-                      <Table.Td ta="right">{money(p.stock * p.costPrice)}</Table.Td>
+                      <Table.Td ta="right">{price(p.branchCost ?? p.costPrice)}</Table.Td>
+                      <Table.Td ta="right">{money(p.stock * (p.branchCost ?? p.costPrice))}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
