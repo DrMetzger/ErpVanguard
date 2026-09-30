@@ -7,6 +7,8 @@ on:
       - 'api/**'
       - 'web/**'
       - 'infra/docker-compose.yml'
+      - 'infra/backup.sh'
+      - 'infra/restore.sh'
       - '.github/workflows/deploy-app.yml'
       - '.github/actions/vps-ssh/**'
   workflow_dispatch:
@@ -125,6 +127,40 @@ jobs:
           done
           docker compose --env-file "$env_file" logs --tail 80 api
           exit 1
+          REMOTE
+
+      - name: Daily backup (02:00 Brasília, 14 days)
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR bash -s" <<'REMOTE'
+          set -euo pipefail
+          install -d -m 755 "$APP_DIR/bin"
+          install -m 750 "$APP_DIR/app/infra/backup.sh" "$APP_DIR/bin/backup.sh"
+          install -m 750 "$APP_DIR/app/infra/restore.sh" "$APP_DIR/bin/restore.sh"
+          cat > /etc/systemd/system/vanguard-backup.service <<UNIT
+          [Unit]
+          Description=Backup diário do ERP Vanguard
+          After=docker.service
+          [Service]
+          Type=oneshot
+          Environment=APP_DIR=$APP_DIR
+          ExecStart=/usr/bin/bash $APP_DIR/bin/backup.sh
+          UNIT
+          cat > /etc/systemd/system/vanguard-backup.timer <<UNIT
+          [Unit]
+          Description=Backup diário do ERP Vanguard às 02:00 (Brasília)
+          [Timer]
+          OnCalendar=*-*-* 02:00:00 America/Sao_Paulo
+          Persistent=true
+          [Install]
+          WantedBy=timers.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable --now vanguard-backup.timer >/dev/null
+          # Primeiro backup na hora, se ainda não houver nenhum.
+          ls "$APP_DIR"/backups/vanguard-*.dump >/dev/null 2>&1 || systemctl start vanguard-backup.service
+          echo "Próximo backup: $(systemctl show vanguard-backup.timer -p NextElapseUSecRealtime --value)"
+          echo "Último: $(ls -1t "$APP_DIR"/backups/vanguard-*.dump 2>/dev/null | head -1 | xargs -r basename) · guardados: $(ls -1 "$APP_DIR"/backups/vanguard-*.dump 2>/dev/null | wc -l)"
+          journalctl -u vanguard-backup.service -n 3 --no-pager -o cat || true
           REMOTE
 
       - name: Check public URL
