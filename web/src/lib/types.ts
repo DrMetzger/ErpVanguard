@@ -23,6 +23,7 @@ export interface Product {
   minStock: number
   typeId: string | null
   groupId: string | null
+  classTribId?: string | null
   typeLabel?: string | null
   groupLabel?: string | null
   origin: number

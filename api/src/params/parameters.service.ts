@@ -20,6 +20,12 @@ export const PARAMS: ParamDef[] = [
   { key: 'MV_COFPRE', group: 'Impostos', label: 'COFINS no Lucro Presumido (%)', type: 'decimal', default: 3, help: 'Regime cumulativo.', min: 0, max: 100 },
   { key: 'MV_PISREAL', group: 'Impostos', label: 'PIS no Lucro Real (%)', type: 'decimal', default: 1.65, help: 'Regime não cumulativo.', min: 0, max: 100 },
   { key: 'MV_COFREAL', group: 'Impostos', label: 'COFINS no Lucro Real (%)', type: 'decimal', default: 7.6, help: 'Regime não cumulativo.', min: 0, max: 100 },
+  // Reforma tributária (LC 214/2025). 2026 é ano de teste: CBS 0,9% e IBS 0,1%, destacados na nota sem somar no total.
+  { key: 'MV_IBSCBS', group: 'IBS/CBS', label: 'Calcula IBS e CBS (reforma tributária)', type: 'bool', default: true, help: 'Calcula e informa o grupo IBSCBS na NF-e. A classificação (cClassTrib) vem da TES ou do produto; sem nenhuma, 000001 (tributação integral).' },
+  { key: 'MV_IBSCBSSN', group: 'IBS/CBS', label: 'Informa IBS/CBS também no Simples Nacional e MEI', type: 'bool', default: false, help: 'Em 2026 o Simples/MEI não é obrigado a informar. Ligue só se o contador pedir.' },
+  { key: 'MV_CBSALQ', group: 'IBS/CBS', label: 'Alíquota da CBS (%)', type: 'decimal', default: 0.9, help: 'Contribuição federal. 2026: 0,9% (teste). A redução do cClassTrib é aplicada sobre ela.', min: 0, max: 100 },
+  { key: 'MV_IBSUFALQ', group: 'IBS/CBS', label: 'Alíquota do IBS estadual (%)', type: 'decimal', default: 0.1, help: 'Parte da UF. 2026: 0,1% (teste).', min: 0, max: 100 },
+  { key: 'MV_IBSMUNALQ', group: 'IBS/CBS', label: 'Alíquota do IBS municipal (%)', type: 'decimal', default: 0, help: 'Parte do município. 2026: 0% (o 0,1% de teste fica todo com a UF).', min: 0, max: 100 },
   // NF-e
   { key: 'MV_INDPRES', group: 'NF-e', label: 'Presença do comprador (indPres)', type: 'int', default: 1, help: '0 = não se aplica, 1 = presencial, 2 = internet, 3 = teleatendimento, 4 = entrega em domicílio, 5 = presencial fora do estabelecimento, 9 = outros.', min: 0, max: 9 },
   { key: 'MV_TPAGVIS', group: 'NF-e', label: 'Forma de pagamento à vista (tPag)', type: 'text', default: '01', help: 'Código da SEFAZ: 01 dinheiro, 03 cartão de crédito, 04 cartão de débito, 15 boleto, 17 PIX, 99 outros.', pattern: /^\d{2}$/, patternMessage: 'use o código de 2 dígitos (ex.: 01, 17)' },

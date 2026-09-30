@@ -82,7 +82,7 @@ export class SalesDocsService {
     const lines: Omit<PreparedLine, 'taxes'>[] = []
     const warnings: string[] = []
     for (const item of dto.items) {
-      const p = found(await one(tx, `SELECT id, sku, name, unit, ncm, type_id, group_id, origin, stock, cost_price, sale_price, active FROM products WHERE id = $1`, [item.productId]), 'Produto não encontrado')
+      const p = found(await one(tx, `SELECT id, sku, name, unit, ncm, type_id, group_id, origin, class_trib_id, stock, cost_price, sale_price, active FROM products WHERE id = $1`, [item.productId]), 'Produto não encontrado')
       if (!p.active) throw new BadRequestException(`Produto inativo: ${p.sku}`)
       let unitPrice = item.unitPrice
       if (unitPrice === undefined) {
@@ -105,7 +105,7 @@ export class SalesDocsService {
     if (discount > itemsTotal + 0.005) throw new BadRequestException('O desconto é maior que o valor dos itens')
     const taxes = computeTaxes(ctx, lines.map((l, i) => {
       const p = (l as any)._product
-      return { key: String(i), productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: l.fiscal?.cfop ?? null, amount: l.total }
+      return { key: String(i), productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: l.fiscal?.cfop ?? null, amount: l.total, tesId: l.fiscal?.tes.id ?? null, classTribId: p.class_trib_id }
     }), freight, discount)
     return {
       companyId: company.id, regime: company.tax_regime, customer: { id: customer.id, name: customer.name, uf: customer.uf, taxpayer: customer.taxpayer },

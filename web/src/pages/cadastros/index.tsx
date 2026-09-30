@@ -1,10 +1,11 @@
 import {
   IconArrowsExchange, IconBarcode, IconBoxSeam, IconBuildingStore, IconCategory, IconFileDescription, IconGridDots,
-  IconLink, IconListNumbers, IconMap, IconPercentage, IconReceiptTax, IconRuler2, IconTags, IconUsersGroup,
+  IconLink, IconListNumbers, IconMap, IconScale, IconPercentage, IconReceiptTax, IconRuler2, IconTags, IconUsersGroup,
 } from '@tabler/icons-react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { CatalogPage } from '../../components/CatalogPage'
 import { ModuleTabs } from '../../components/ModuleTabs'
+import { ClassTribPage } from './ClassTrib'
 import { FiscalMatrix } from './Fiscal'
 import { NcmAiButton } from './NcmAi'
 import PriceTables from './PriceTables'
@@ -44,6 +45,7 @@ export default function Cadastros() {
           { path: 'matriz', label: 'Matriz fiscal (TES)', icon: IconGridDots, element: <FiscalMatrix /> },
           { path: 'impostos', label: 'Matriz de impostos', icon: IconPercentage, element: <CatalogPage name="tax-rules" /> },
           { path: 'icms-uf', label: 'ICMS por UF', icon: IconMap, element: <CatalogPage name="uf-icms" /> },
+          { path: 'cclasstrib', label: 'IBS/CBS (cClassTrib)', icon: IconScale, element: <ClassTribPage /> },
           { path: 'tes', label: 'TES (entrada/saída)', icon: IconArrowsExchange, element: <CatalogPage name="tes" /> },
           { path: 'operacoes', label: 'Tipos de operação', icon: IconFileDescription, element: <CatalogPage name="operation-types" /> },
           { path: 'cfop', label: 'CFOP', icon: IconListNumbers, element: <CatalogPage name="cfop" /> },

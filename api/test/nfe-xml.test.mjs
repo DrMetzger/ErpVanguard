@@ -5,6 +5,7 @@ import { computeTaxes } from '../dist/taxes/tax-engine.js'
 import { buildNfeXml, HOMOLOG_DEST } from '../dist/nfe/nfe-xml.js'
 import { certificateFromPfx, signXml, validateXsd } from '../dist/nfe/sefaz.js'
 import { checkKey, checkTotals, makePfx, verifySignature } from './nfe-helpers.mjs'
+import { classTrib, ibsParams } from './ibs-cbs-fixture.mjs'
 
 const r2 = (n) => Math.round(n * 100) / 100
 
@@ -18,7 +19,7 @@ const rule = (o) => ({ regime: null, operation_type_id: null, uf: null, taxpayer
 const ctx = (o) => ({ regime: 'presumido', companyUf: 'SP', destUf: 'SP', taxpayer: '1', operationTypeId: 'op', date: '2026-09-28', snCreditRate: 1.86, uf: ufs, rules: [], ncmIpi: new Map(), params, ...o })
 
 function scenario({ tctx, lines, freight = 0, discount = 0, crt, dest, env = 'homologacao', dups = [] }) {
-  const taxes = computeTaxes(tctx, lines.map((l, i) => ({ key: String(i), productId: 'p' + i, ncm: l.ncm, typeId: null, groupId: null, origin: l.origin ?? 0, cfop: l.cfop, amount: r2(l.qty * l.price * (1 - (l.pct ?? 0) / 100)) })), freight, discount)
+  const taxes = computeTaxes(tctx, lines.map((l, i) => ({ key: String(i), productId: 'p' + i, ncm: l.ncm, typeId: null, groupId: null, origin: l.origin ?? 0, cfop: l.cfop, classTribId: l.classTrib ?? null, amount: r2(l.qty * l.price * (1 - (l.pct ?? 0) / 100)) })), freight, discount)
   const items = lines.map((l, i) => {
     const gross = r2(l.qty * l.price)
     const amount = r2(l.qty * l.price * (1 - (l.pct ?? 0) / 100))
@@ -116,6 +117,37 @@ run('CST 20 com redução de base', scenario({
   tctx: ctx({ rules: [rule({ tax: 'ICMS', cst: '20', base_reduction: 33.33 })] }), crt: '3', dest: destPJ,
   lines: [{ ncm: '84672100', cfop: '5102', qty: 1, price: 1000 }],
 }), (x) => assert.match(x, /<ICMS20><orig>0<\/orig><CST>20<\/CST><modBC>3<\/modBC><pRedBC>33.3300<\/pRedBC><vBC>666.70<\/vBC>/))
+
+// IBS/CBS (reforma tributária): grupo IBSCBS nos itens e IBSCBSTot, sem somar no vNF
+const ibsCtx = (o = {}) => ctx({ params: { ...params, ...ibsParams }, classTrib, ...o })
+run('IBS/CBS: integral, redução 60%, alíquota zero e imunidade', scenario({
+  tctx: ibsCtx({ destUf: 'BA', taxpayer: '9' }), crt: '3', freight: 30,
+  dest: { document: '11444777000161', name: 'Hospital Não Contribuinte', ie: null, taxpayer: '9', street: 'Rua Chile', number: '1', district: 'Centro', cityCode: '2927408', city: 'Salvador', uf: 'BA', zip: '40020000' },
+  lines: [
+    { ncm: '84672100', cfop: '6108', qty: 1, price: 1000 },
+    { ncm: '19059090', cfop: '6108', qty: 2, price: 50, classTrib: '200034' },
+    { ncm: '10063021', cfop: '6108', qty: 1, price: 80, classTrib: '200003' },
+    { ncm: '39269090', cfop: '6910', qty: 1, price: 10, classTrib: '410001' },
+  ],
+}), (x) => {
+  const items = [...x.matchAll(/<IBSCBS>[\s\S]*?<\/IBSCBS>/g)].map((m) => m[0])
+  assert.equal(items.length, 4)
+  assert.match(items[0], /^<IBSCBS><CST>000<\/CST><cClassTrib>000001<\/cClassTrib><gIBSCBS><vBC>[\d.]+<\/vBC><gIBSUF><pIBSUF>0.1000<\/pIBSUF><vIBSUF>[\d.]+<\/vIBSUF><\/gIBSUF><gIBSMun><pIBSMun>0.0000<\/pIBSMun><vIBSMun>0.00<\/vIBSMun><\/gIBSMun><vIBS>[\d.]+<\/vIBS><gCBS><pCBS>0.9000<\/pCBS><vCBS>[\d.]+<\/vCBS><\/gCBS><\/gIBSCBS><\/IBSCBS>$/)
+  assert.match(items[1], /<gCBS><pCBS>0.9000<\/pCBS><gRed><pRedAliq>60.0000<\/pRedAliq><pAliqEfet>0.3600<\/pAliqEfet><\/gRed><vCBS>/)
+  assert.match(items[2], /<pRedAliq>100.0000<\/pRedAliq><pAliqEfet>0.0000<\/pAliqEfet><\/gRed><vCBS>0.00<\/vCBS>/)
+  assert.equal(items[3], '<IBSCBS><CST>410</CST><cClassTrib>410001</cClassTrib></IBSCBS>')
+  assert.ok(x.indexOf('</ICMSUFDest>') < x.indexOf('<IBSCBS>'), 'IBSCBS depois do ICMSUFDest')
+  const sum = (tag, g = x) => Math.round([...g.matchAll(new RegExp(`<${tag}>([^<]+)</${tag}>`, 'g'))].reduce((s, m) => s + Number(m[1]), 0) * 100) / 100
+  const tot = x.match(/<IBSCBSTot>[\s\S]*<\/IBSCBSTot>/)[0]
+  const dets = items.join('')
+  assert.equal(sum('vCBS', tot), sum('vCBS', dets)); assert.equal(sum('vIBSUF', tot), sum('vIBSUF', dets)); assert.equal(sum('vBCIBSCBS', tot), sum('vBC', dets.replace(/<gIBSUF>[\s\S]*?<\/gIBSUF>/g, '')))
+  assert.ok(x.indexOf('</ICMSTot><IBSCBSTot>') > 0)
+})
+
+// Sem cClassTrib na tabela (ou MV_IBSCBS desligado) o grupo não sai; CST não emitido dá erro claro
+assert.ok(!scenario({ tctx: ctx({}), crt: '3', dest: destPJ, lines: [{ ncm: '84672100', cfop: '5102', qty: 1, price: 10 }] }).xml.includes('IBSCBS'))
+assert.throws(() => scenario({ tctx: ibsCtx(), crt: '3', dest: destPJ, lines: [{ ncm: '27101259', cfop: '5102', qty: 1, price: 10, classTrib: '620001' }] }), /620001/)
+passed++; console.log('  ✓ sem IBS/CBS calculado o grupo não sai; CST monofásico ainda não suportado dá erro claro')
 
 const bad = signXml(scenario({ tctx: ctx({}), crt: '3', dest: destPJ, lines: [{ ncm: '84672100', cfop: '5102', qty: 1, price: 10 }] }).xml.replace('<CEP>01001000</CEP>', '<CEP>0100</CEP>'), cert)
 const badResult = validateXsd(bad)

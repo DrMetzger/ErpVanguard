@@ -89,7 +89,7 @@ export class ProductsController {
         throw new ConflictException('Já existe um produto com este código (SKU)')
       }
       if (error instanceof QueryFailedError && (error as { code?: string }).code === '23503') {
-        throw new ConflictException('Tipo ou grupo de produto não encontrado')
+        throw new ConflictException('Tipo, grupo ou classificação tributária (cClassTrib) não encontrado')
       }
       throw error
     }

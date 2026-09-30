@@ -1,5 +1,5 @@
 import { ieValida } from '../common/br'
-import type { ItemTaxes } from '../taxes/tax-engine'
+import { IBSCBS_NO_GROUP, IBSCBS_WITH_GROUP, type IbsCbsTaxes, type ItemTaxes } from '../taxes/tax-engine'
 
 // Montagem do XML da NF-e (modelo 55, leiaute 4.00) a partir da nota de venda e dos impostos do nosso motor.
 // Só monta o <NFe>; assinatura, XSD e SEFAZ ficam em sefaz.ts (com a @brasil-fiscal/nfe).
@@ -42,6 +42,8 @@ export interface NfeTotals {
   vBC: number; vICMS: number; vICMSDeson: number; vFCPUFDest: number; vICMSUFDest: number; vICMSUFRemet: number; vFCP: number
   vBCST: number; vST: number; vFCPST: number; vProd: number; vFrete: number; vDesc: number; vIPI: number; vPIS: number; vCOFINS: number
   vNF: number; vTotTrib: number
+  // IBS/CBS (reforma tributária): informativos em 2026, não somam no vNF
+  vBCIBSCBS: number; vIBSUF: number; vIBSMun: number; vIBS: number; vCBS: number
 }
 
 // ---- texto e números
@@ -215,6 +217,34 @@ function difalGroup(t: ItemTaxes, acc: NfeTotals) {
     + (d.fcpRate > 0 ? tag('vFCPUFDest', d2(d.fcpValue)) : '') + tag('vICMSUFDest', d2(d.value)) + tag('vICMSUFRemet', d2(0)))
 }
 
+// IBS/CBS do item (grupo IBSCBS, NT 2025.002). Sem grupo de cálculo: só CST e cClassTrib (imunidade, isenção…).
+function ibsCbsGroup(item: NfeItem, t: ItemTaxes, acc: NfeTotals) {
+  const x = t.ibsCbs
+  if (!x) return ''
+  if (!IBSCBS_WITH_GROUP.includes(x.cst) && !IBSCBS_NO_GROUP.includes(x.cst)) {
+    throw new Error(`Item ${item.code}: cClassTrib ${x.classTrib} (CST ${x.cst} do IBS/CBS) ainda não é emitido pelo sistema: troque a classificação na TES ou no produto`)
+  }
+  let calc = ''
+  if (x.withGroup) {
+    acc.vBCIBSCBS += x.base; acc.vIBSUF += x.ibsUf.value; acc.vIBSMun += x.ibsMun.value; acc.vIBS += x.ibs; acc.vCBS += x.cbs.value
+    // gRed: redução da alíquota do cClassTrib (pRedAliq) e a alíquota que sobra (pAliqEfet)
+    const part = (p: IbsCbsTaxes['cbs'], rateTag: string, valueTag: string) => tag(rateTag, d4(p.rate))
+      + (p.reduction > 0 ? group('gRed', tag('pRedAliq', d4(p.reduction)) + tag('pAliqEfet', d4(p.effective))) : '') + tag(valueTag, d2(p.value))
+    calc = group('gIBSCBS', tag('vBC', d2(x.base)) + group('gIBSUF', part(x.ibsUf, 'pIBSUF', 'vIBSUF')) + group('gIBSMun', part(x.ibsMun, 'pIBSMun', 'vIBSMun'))
+      + tag('vIBS', d2(x.ibs)) + group('gCBS', part(x.cbs, 'pCBS', 'vCBS')))
+  }
+  return group('IBSCBS', tag('CST', x.cst) + tag('cClassTrib', x.classTrib) + calc)
+}
+
+function ibsCbsTotal(acc: NfeTotals, items: NfeItem[]) {
+  if (!items.some((i) => i.taxes.ibsCbs)) return ''
+  const z = d2(0)
+  return group('IBSCBSTot', tag('vBCIBSCBS', d2(acc.vBCIBSCBS))
+    + group('gIBS', group('gIBSUF', tag('vDif', z) + tag('vDevTrib', z) + tag('vIBSUF', d2(acc.vIBSUF)))
+      + group('gIBSMun', tag('vDif', z) + tag('vDevTrib', z) + tag('vIBSMun', d2(acc.vIBSMun))) + tag('vIBS', d2(acc.vIBS)) + tag('vCredPres', z) + tag('vCredPresCondSus', z))
+    + group('gCBS', tag('vDif', z) + tag('vDevTrib', z) + tag('vCBS', d2(acc.vCBS)) + tag('vCredPres', z) + tag('vCredPresCondSus', z)))
+}
+
 // ---- documento
 
 function address(tagName: string, a: NfeAddress) {
@@ -258,7 +288,7 @@ export function buildNfeXml(input: NfeInput) {
   const destXml = group('dest', (doc.length === 11 ? tag('CPF', doc) : tag('CNPJ', doc)) + tag('xNome', homolog ? HOMOLOG_DEST : text(dest.name, 60))
     + address('enderDest', dest) + tag('indIEDest', indIEDest) + tag('IE', destIe) + tag('email', text(dest.email?.split(/[;,\s]/)[0], 60)))
 
-  const acc: NfeTotals = { vBC: 0, vICMS: 0, vICMSDeson: 0, vFCPUFDest: 0, vICMSUFDest: 0, vICMSUFRemet: 0, vFCP: 0, vBCST: 0, vST: 0, vFCPST: 0, vProd: 0, vFrete: 0, vDesc: 0, vIPI: 0, vPIS: 0, vCOFINS: 0, vNF: 0, vTotTrib: 0 }
+  const acc: NfeTotals = { vBC: 0, vICMS: 0, vICMSDeson: 0, vFCPUFDest: 0, vICMSUFDest: 0, vICMSUFRemet: 0, vFCP: 0, vBCST: 0, vST: 0, vFCPST: 0, vProd: 0, vFrete: 0, vDesc: 0, vIPI: 0, vPIS: 0, vCOFINS: 0, vNF: 0, vTotTrib: 0, vBCIBSCBS: 0, vIBSUF: 0, vIBSMun: 0, vIBS: 0, vCBS: 0 }
   const dets = input.items.map((item, n) => {
     const t = item.taxes
     const ean = gtin(item.barcode)
@@ -277,11 +307,12 @@ export function buildNfeXml(input: NfeInput) {
     acc.vTotTrib += approx
     const imposto = (approx > 0 ? tag('vTotTrib', d2(approx)) : '') + group('ICMS', icmsGroup(item, t, acc)) + ipiGroup(t, acc)
       + pisCofinsGroup('PIS', t.pis, acc) + pisCofinsGroup('COFINS', t.cofins, acc) + (idDest === '2' && indFinal === '1' && indIEDest === '9' ? difalGroup(t, acc) : '')
-    // IBS/CBS (reforma tributária): o motor ainda não calcula; o grupo é opcional no XSD (minOccurs=0) e fica de fora.
+      + ibsCbsGroup(item, t, acc)
     return group('det', group('prod', prod) + group('imposto', imposto), `nItem="${n + 1}"`)
   })
 
   for (const k of Object.keys(acc) as (keyof NfeTotals)[]) acc[k] = r2(acc[k])
+  // 2026 (ano de teste): IBS e CBS não somam no vNF
   acc.vNF = r2(acc.vProd - acc.vDesc - acc.vICMSDeson + acc.vST + acc.vFCPST + acc.vFrete + acc.vIPI)
   const icmsTot = tag('vBC', d2(acc.vBC)) + tag('vICMS', d2(acc.vICMS)) + tag('vICMSDeson', d2(0))
     + (acc.vFCPUFDest > 0 || acc.vICMSUFDest > 0 ? tag('vFCPUFDest', d2(acc.vFCPUFDest)) + tag('vICMSUFDest', d2(acc.vICMSUFDest)) + tag('vICMSUFRemet', d2(0)) : '')
@@ -311,7 +342,7 @@ export function buildNfeXml(input: NfeInput) {
     ? group('infRespTec', tag('CNPJ', onlyDigits(rt.cnpj)) + tag('xContato', text(rt.contact, 60)) + tag('email', text(rt.email, 60)) + tag('fone', onlyDigits(rt.phone)))
     : ''
 
-  const infNFe = group('ide', ide) + emitXml + destXml + dets.join('') + group('total', group('ICMSTot', icmsTot)) + transp + cobr + pag + infAdic + respTec
+  const infNFe = group('ide', ide) + emitXml + destXml + dets.join('') + group('total', group('ICMSTot', icmsTot) + ibsCbsTotal(acc, input.items)) + transp + cobr + pag + infAdic + respTec
   const xml = `<NFe xmlns="${NFE_NS}"><infNFe Id="NFe${key}" versao="4.00">${infNFe}</infNFe></NFe>`
   return { xml, accessKey: key, totals: acc, dhEmi }
 }

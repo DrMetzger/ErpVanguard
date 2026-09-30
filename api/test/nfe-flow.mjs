@@ -171,9 +171,11 @@ try {
   assert.match(xml1, /<cobr><fat><nFat>\d+<\/nFat>.*<dup><nDup>001<\/nDup>.*<nDup>002<\/nDup>/); assert.match(xml1, /<indPag>1<\/indPag><tPag>15<\/tPag>/)
   assert.match(xml1, /<modFrete>0<\/modFrete>/); assert.match(xml1, /<natOp>[^<]+<\/natOp>/); assert.match(xml1, /<verProc>ERP Vanguard 1.0<\/verProc>/)
   assert.ok(!xml1.includes('<infRespTec>'), 'sem responsável técnico configurado, o grupo fica de fora')
+  assert.match(xml1, /<IBSCBS><CST>000<\/CST><cClassTrib>000001<\/cClassTrib><gIBSCBS><vBC>[\d.]+<\/vBC><gIBSUF><pIBSUF>0.1000<\/pIBSUF>/, 'IBS/CBS da TES de venda (000001)')
+  assert.match(xml1, /<\/ICMSTot><IBSCBSTot><vBCIBSCBS>[\d.]+<\/vBCIBSCBS>/)
   const inv1 = await call(tFat, 'GET', `/sales-invoices/${nf1.id}`)
   assert.equal(Number(xml1.match(/<vNF>([^<]+)<\/vNF>/)[1]), inv1.total, 'vNF = total da nota')
-  ok(`XML gerado, assinado e válido no XSD (chave ${gen.accessKey}); totais, duplicatas 30/60 e textos de homologação conferidos`)
+  ok(`XML gerado, assinado e válido no XSD (chave ${gen.accessKey}); totais, duplicatas 30/60, IBS/CBS e textos de homologação conferidos`)
 
   // Responsável técnico pelos parâmetros
   await call(admin, 'PUT', '/parameters', { MV_RTCNPJ: '11222333000181', MV_RTCONT: 'Kleber  Farias', MV_RTMAIL: 'suporte@primeerp.com.br', MV_RTFONE: '11999998888' })

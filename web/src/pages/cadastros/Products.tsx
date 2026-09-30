@@ -90,11 +90,13 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
     costPrice: product.costPrice ?? ('' as number | string), salePrice: product.salePrice ?? ('' as number | string),
     stock: product.stock ?? ('' as number | string), minStock: product.minStock ?? ('' as number | string), active: product.active ?? true,
     typeId: product.typeId ?? (null as string | null), groupId: product.groupId ?? (null as string | null), origin: String(product.origin ?? 0),
+    classTribId: product.classTribId ?? (null as string | null),
   })
   const types = useOptions('product-types')
   const groups = useOptions('product-groups')
   const units = useApi<{ code: string; description: string; active: boolean }[]>('/catalog/units').data ?? []
   const ncms = useOptions('ncm')
+  const classTribs = useOptions('class-trib')
   const { busy, run } = useAction()
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -105,6 +107,7 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
       sku: form.sku.trim(), name: form.name.trim(), unit: form.unit.trim(), barcode: text(form.barcode), ncm: text(form.ncm),
       costPrice: toNumber(form.costPrice) ?? 0, salePrice: toNumber(form.salePrice) ?? 0, stock: toNumber(form.stock) ?? 0, minStock: toNumber(form.minStock) ?? 0,
       typeId: form.typeId ?? (isNew ? undefined : null), groupId: form.groupId ?? (isNew ? undefined : null), origin: Number(form.origin),
+      classTribId: form.classTribId ?? (isNew ? undefined : null),
       ...(isNew ? {} : { active: form.active }),
       ...(custom?.fields.length ? { custom: customBody(custom.fields, extra) } : {}),
     }
@@ -128,6 +131,8 @@ function ProductForm({ product, custom, onClose, onSaved }: { product: Partial<P
           {L.show('typeId') && <Select label={L.label('typeId', 'Tipo (SPED)')} style={{ order: L.order('typeId') }} data={types} value={form.typeId} onChange={(v) => set('typeId', v)} clearable searchable />}
           {L.show('groupId') && <Select label={L.label('groupId', 'Grupo')} style={{ order: L.order('groupId') }} data={groups} value={form.groupId} onChange={(v) => set('groupId', v)} clearable searchable />}
           {L.show('origin') && <Select label={L.label('origin', 'Origem da mercadoria')} style={{ order: L.order('origin') }} data={ORIGINS} value={form.origin} onChange={(v) => set('origin', v ?? '0')} allowDeselect={false} />}
+          {L.show('classTribId') && <Select label={L.label('classTribId', 'cClassTrib (IBS/CBS)')} style={{ order: L.order('classTribId') }} data={classTribs} value={form.classTribId} onChange={(v) => set('classTribId', v)} clearable searchable
+            placeholder="O da TES" description="Só se este produto for diferente da TES (ex.: 200003 alimentos do Anexo I)" />}
           {L.show('costPrice') && <Money label={L.label('costPrice', 'Preço de custo')} style={{ order: L.order('costPrice') }} value={form.costPrice} onChange={(v) => set('costPrice', v)} />}
           {L.show('salePrice') && <Money label={L.label('salePrice', 'Preço de venda')} style={{ order: L.order('salePrice') }} value={form.salePrice} onChange={(v) => set('salePrice', v)} />}
           <BrNumber label="Estoque atual" decimalScale={4} allowNegative value={form.stock} onChange={(v) => set('stock', v)} />

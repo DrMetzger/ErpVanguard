@@ -45,6 +45,10 @@ export class Product {
   @Column({ type: 'smallint', default: 0 })
   origin: number
 
+  // cClassTrib do IBS/CBS só deste produto; vazio usa o da TES (reforma tributária)
+  @Column({ name: 'class_trib_id', type: 'uuid', nullable: true })
+  classTribId: string | null
+
   // Miniatura da foto principal (data URL pequena) para as listas
   @Column({ type: 'text', nullable: true })
   thumb: string | null

@@ -57,6 +57,11 @@ export class CreateProductDto {
   @Max(8)
   origin?: number
 
+  // Classificação tributária do IBS/CBS só deste produto (vazio = a da TES)
+  @IsOptional()
+  @IsUUID()
+  classTribId?: string | null
+
   @IsOptional()
   @IsBoolean()
   active?: boolean

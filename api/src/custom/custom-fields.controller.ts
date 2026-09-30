@@ -45,7 +45,7 @@ const STANDARD: Record<string, { key: string; label: string; required?: boolean 
   products: [
     { key: 'sku', label: 'Código (SKU)', required: true }, { key: 'name', label: 'Descrição', required: true }, { key: 'unit', label: 'Unidade', required: true },
     { key: 'barcode', label: 'Código de barras' }, { key: 'ncm', label: 'NCM' }, { key: 'typeId', label: 'Tipo (SPED)' }, { key: 'groupId', label: 'Grupo' },
-    { key: 'origin', label: 'Origem da mercadoria' }, { key: 'costPrice', label: 'Custo' }, { key: 'salePrice', label: 'Preço de venda' },
+    { key: 'origin', label: 'Origem da mercadoria' }, { key: 'classTribId', label: 'cClassTrib (IBS/CBS)' }, { key: 'costPrice', label: 'Custo' }, { key: 'salePrice', label: 'Preço de venda' },
     { key: 'minStock', label: 'Estoque mínimo' },
   ],
 }

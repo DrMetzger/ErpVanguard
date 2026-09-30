@@ -37,7 +37,7 @@ function display(f: FieldDef, row: CatalogRow): ReactNode {
 const LOOKUP = ['customers', 'companies', 'suppliers']
 
 // Tela de cadastro montada a partir da descrição vinda da API.
-export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (row: CatalogRow, reload: () => void) => ReactNode }) {
+export function CatalogPage({ name, rowActions, headerActions }: { name: string; rowActions?: (row: CatalogRow, reload: () => void) => ReactNode; headerActions?: (canWrite: boolean, reload: () => void) => ReactNode }) {
   const meta = useResource(name)
   const user = useUser()
   const [query, setQuery] = useState('')
@@ -62,6 +62,7 @@ export function CatalogPage({ name, rowActions }: { name: string; rowActions?: (
           <Text size="sm" c="dimmed">{meta.description}</Text>
         </div>
         <Group gap="xs">
+          {headerActions?.(canWrite, () => { clearOptions(); reload() })}
           <SheetMenu name={name} title={meta.title} canWrite={canWrite} onImported={() => { clearOptions(); reload() }} />
           {canWrite && <Button leftSection={<IconPlus size={18} />} onClick={() => setEditing({})}>Novo(a) {meta.singular}</Button>}
         </Group>

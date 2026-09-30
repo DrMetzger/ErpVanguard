@@ -12,11 +12,18 @@ export interface ItemTaxes {
   cofins: { cst: string; base: number; rate: number; value: number }
   freight: number; discount: number; total: number; rules: string[]
   approx?: { rate: number; value: number }
+  ibsCbs?: {
+    cst: string; classTrib: string; name: string; withGroup: boolean; base: number; ibs: number
+    ibsUf: { rate: number; reduction: number; effective: number; value: number }
+    ibsMun: { rate: number; reduction: number; effective: number; value: number }
+    cbs: { rate: number; reduction: number; effective: number; value: number }
+  } | null
 }
 export interface TaxTotals {
   products: number; discount: number; freight: number; icmsBase: number; icms: number; stBase: number; st: number; ipi: number
   fcp: number; difal: number; fcpDest: number; pis: number; cofins: number; snCredit: number; total: number
   approxTax?: number
+  ibsCbsBase?: number; ibsUf?: number; ibsMun?: number; ibs?: number; cbs?: number
 }
 export interface SalesOrderItem {
   id?: string; productId: string; sku: string; name: string; unit: string; stock: number; quantity: number; unitPrice: number; discountPct: number; total: number

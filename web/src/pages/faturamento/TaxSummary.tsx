@@ -46,6 +46,14 @@ export function TaxTotalsBlock({ totals, regime, csts }: { totals: TaxTotals; re
           <Text size="xs">{REGIMES[regime] ?? regime}: nenhum imposto calculado. Confira a TES e a matriz de impostos (Cadastros › Fiscal).</Text>
         </Alert>
       )}
+      {totals.ibsCbsBase !== undefined && totals.ibsCbsBase > 0 && (
+        <>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={700} mt="xs">Reforma tributária · informativo 2026 (não soma no total)</Text>
+          <Group justify="space-between"><Text c="dimmed" size="sm">Base IBS/CBS</Text><Text size="sm">{money(totals.ibsCbsBase)}</Text></Group>
+          <Group justify="space-between"><Text c="dimmed" size="sm">IBS (UF + município)</Text><Text size="sm">{money(totals.ibs ?? 0)}</Text></Group>
+          <Group justify="space-between"><Text c="dimmed" size="sm">CBS</Text><Text size="sm">{money(totals.cbs ?? 0)}</Text></Group>
+        </>
+      )}
       {totals.approxTax !== undefined && (
         <Group justify="space-between" mt={4} wrap="nowrap" gap="xs">
           <Text size="xs" c="dimmed" title="Lei 12.741/2012, percentuais da tabela IBPT (por NCM ou o padrão MV_IBPTPCT)">Valor aprox. dos tributos (Lei 12.741)</Text>
@@ -72,6 +80,15 @@ export function ItemTaxBadge({ taxes }: { taxes: ItemTaxes | null | undefined })
   if (taxes.difal) lines.push(['DIFAL', `${money(taxes.difal.base)} × (${pct(taxes.difal.destRate)} − ${pct(taxes.difal.interRate)}) = ${money(taxes.difal.value)}${taxes.difal.fcpValue ? ` + FCP ${money(taxes.difal.fcpValue)}` : ''}`])
   lines.push([`PIS · ${taxes.pis.cst}`, taxes.pis.value ? `${pct(taxes.pis.rate)} = ${money(taxes.pis.value)}` : 'sem destaque'])
   lines.push([`COFINS · ${taxes.cofins.cst}`, taxes.cofins.value ? `${pct(taxes.cofins.rate)} = ${money(taxes.cofins.value)}` : 'sem destaque'])
+  const x = taxes.ibsCbs
+  if (x) {
+    lines.push([`IBS/CBS · CST ${x.cst}`, `cClassTrib ${x.classTrib}${x.withGroup ? '' : ' (sem cálculo)'}`])
+    if (x.withGroup) {
+      const r = (p: { rate: number; reduction: number; effective: number }) => p.reduction ? `${pct(p.rate)} − ${pct(p.reduction)} = ${pct(p.effective)}` : pct(p.rate)
+      lines.push(['IBS', `${money(x.base)} × (UF ${r(x.ibsUf)} + mun. ${r(x.ibsMun)}) = ${money(x.ibs)}`])
+      lines.push(['CBS', `${money(x.base)} × ${r(x.cbs)} = ${money(x.cbs.value)}`])
+    }
+  }
   if (taxes.approx) lines.push(['Tributos aprox.', `${pct(taxes.approx.rate)} = ${money(taxes.approx.value)}`])
   const extra = (taxes.ipi?.value ?? 0) + (taxes.st?.value ?? 0)
   return (

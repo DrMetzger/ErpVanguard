@@ -9,6 +9,7 @@ import { resolveFiscal } from './fiscal'
 import { fillNcm } from './ncm'
 import { ParametersService } from '../params/parameters.service'
 import { computeTaxes, loadTaxContext } from '../taxes/tax-engine'
+import { decodeCsv, readClassTribCsv, upsertClassTrib } from '../taxes/class-trib'
 import { SettingsService } from '../settings/settings.service'
 import type { User } from '../users/user.entity'
 
@@ -81,9 +82,9 @@ export class ExtrasController {
     if (!dto.productId || !dto.amount) return result
     const company = await one(this.db, `SELECT id FROM companies WHERE active AND ($1::uuid IS NULL OR id = $1) ORDER BY is_head DESC, code LIMIT 1`, [dto.companyId ?? null])
     if (!company) return result
-    const p = (await one(this.db, `SELECT id, ncm, type_id, group_id, origin FROM products WHERE id = $1`, [dto.productId]))!
+    const p = (await one(this.db, `SELECT id, ncm, type_id, group_id, origin, class_trib_id FROM products WHERE id = $1`, [dto.productId]))!
     const ctx = await loadTaxContext(this.db, this.params, { companyId: company.id, destUf: dto.uf ?? null, taxpayer: dto.taxpayer ?? '9', operationTypeId: dto.operationTypeId, date: new Date().toISOString().slice(0, 10) })
-    const taxes = computeTaxes(ctx, [{ key: '0', productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: result.cfop, amount: dto.amount }], dto.freight ?? 0, 0)
+    const taxes = computeTaxes(ctx, [{ key: '0', productId: p.id, ncm: p.ncm, typeId: p.type_id, groupId: p.group_id, origin: Number(p.origin), cfop: result.cfop, amount: dto.amount, tesId: result.tes.id, classTribId: p.class_trib_id }], dto.freight ?? 0, 0)
     return { ...result, regime: ctx.regime, taxes: taxes.items[0]!.taxes, totals: taxes.totals, warnings: taxes.warnings }
   }
 
@@ -97,5 +98,43 @@ export class ExtrasController {
     const result = await fillNcm(this.db, row.code, await this.settings.gemini())
     if (!result.ok) throw new BadRequestException(`Não foi possível buscar a descrição: ${result.reason}`)
     return numbers((await one(this.db, `SELECT id, code, description, ipi_rate AS "ipiRate", pending, source FROM ncm WHERE id = $1`, [id]))!, 'ipiRate')
+  }
+
+  // ---- cClassTrib (IBS/CBS): situação da tabela e atualização pelo CSV oficial da Receita
+  @Get('catalog/class-trib/official')
+  async classTribInfo() {
+    const r = (await one(this.db, `SELECT count(*)::int AS total, count(*) FILTER (WHERE active)::int AS active, max(source_date)::text AS "sourceDate", max(updated_at) AS "updatedAt" FROM class_trib`))!
+    return r
+  }
+
+  @Post('catalog/class-trib/official/import')
+  async classTribImport(@CurrentUser() me: User, @Body() body: { file?: string; commit?: boolean }) {
+    if (!canEdit(me, 'fiscal')) throw new ForbiddenException('Seu usuário não pode alterar a tabela de classificação tributária')
+    if (typeof body?.file !== 'string' || !body.file) throw new BadRequestException('Envie o arquivo CSV da tabela cClassTrib')
+    const buffer = Buffer.from(body.file, 'base64')
+    if (buffer.length > 4 * 1024 * 1024) throw new BadRequestException('Arquivo grande demais (máx. 4 MB)')
+    let parsed: ReturnType<typeof readClassTribCsv>
+    try { parsed = readClassTribCsv(decodeCsv(buffer)) } catch (e) { throw new BadRequestException((e as Error).message) }
+    if (!parsed.rows.length) throw new BadRequestException('Nenhuma classificação encontrada no arquivo')
+    const existing = new Map<string, any>((await this.db.query(`SELECT code, cst, name, p_red_ibs, p_red_cbs, aliquot_type FROM class_trib`)).map((r: any) => [r.code, r]))
+    const changes = parsed.rows.map((r) => {
+      const old = existing.get(r.code)
+      const diff = !old ? [] : [
+        old.cst !== r.cst && `CST ${old.cst} → ${r.cst}`,
+        (Number(old.p_red_ibs) !== r.pRedIbs || Number(old.p_red_cbs) !== r.pRedCbs) && `redução ${Number(old.p_red_ibs)}/${Number(old.p_red_cbs)}% → ${r.pRedIbs}/${r.pRedCbs}%`,
+        old.aliquot_type !== r.aliquotType && `alíquota ${old.aliquot_type} → ${r.aliquotType}`,
+        old.name !== r.name && 'nome',
+      ].filter(Boolean) as string[]
+      return { code: r.code, cst: r.cst, name: r.name, action: old ? (diff.length ? 'alterar' : 'igual') : 'incluir', changes: diff }
+    })
+    const summary = {
+      total: parsed.rows.length, create: changes.filter((c) => c.action === 'incluir').length, update: changes.filter((c) => c.action === 'alterar').length,
+      same: changes.filter((c) => c.action === 'igual').length, missing: [...existing.keys()].filter((k) => !parsed.rows.some((r) => r.code === k)),
+      sourceDate: parsed.rows.map((r) => r.sourceDate).filter(Boolean).sort().at(-1) ?? null, errors: parsed.errors,
+      rows: changes.filter((c) => c.action !== 'igual'),
+    }
+    if (!body.commit || parsed.errors.length) return { committed: false, ...summary }
+    await this.db.transaction((tx) => upsertClassTrib(tx, parsed.rows))
+    return { committed: true, ...summary }
   }
 }

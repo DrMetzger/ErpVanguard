@@ -1,6 +1,7 @@
 // Contas do motor de impostos com casos conhecidos (sem banco).
 import assert from 'node:assert/strict'
 import { computeTaxes, interstateRate } from '../dist/taxes/tax-engine.js'
+import { classTrib, ibsParams } from './ibs-cbs-fixture.mjs'
 
 const uf = new Map([['SP', { internal: 18, fcp: 0 }], ['BA', { internal: 19.5, fcp: 1 }], ['MG', { internal: 18, fcp: 0 }], ['RJ', { internal: 20, fcp: 2 }]])
 const params = { MV_FRETICM: true, MV_IPIBICM: true, MV_DIFAL: true, MV_ICMSPIS: true, MV_PISPRE: 0.65, MV_COFPRE: 3, MV_PISREAL: 1.65, MV_COFREAL: 7.6 }
@@ -61,5 +62,29 @@ assert.equal(r.items[0].taxes.approx.rate, 31.45); assert.equal(r.items[0].taxes
 assert.equal(r.items[1].taxes.approx.rate, 10); assert.equal(r.items[1].taxes.approx.value, 45)
 assert.equal(r.totals.approxTax, 328.05); assert.equal(r.totals.freight, 30); assert.equal(r.totals.total, 1380)
 ok('tributos aproximados (Lei 12.741): % do NCM (31,45% de 900) ou o padrão MV_IBPTPCT (10% de 450); frete é só o informado')
+
+// IBS/CBS (reforma tributária, 2026 ano de teste): CBS 0,9% + IBS UF 0,1%, fora do total da nota
+const ibsCtx = (o = {}) => ctx({ params: { ...params, ...ibsParams }, classTrib, tesClassTrib: new Map([['tes-venda', '000001']]), ...o })
+r = computeTaxes(ibsCtx(), [item({ tesId: 'tes-venda' })], 100, 0)
+let x = r.items[0].taxes.ibsCbs
+// base = 1000 + 100 frete − ICMS 198 − PIS 5,86 − COFINS 27,06 = 869,08
+assert.equal(r.items[0].taxes.icms.value, 198); assert.equal(x.base, 869.08)
+assert.equal(x.cst, '000'); assert.equal(x.classTrib, '000001'); assert.equal(x.cbs.value, 7.82); assert.equal(x.ibsUf.value, 0.87); assert.equal(x.ibsMun.value, 0); assert.equal(x.ibs, 0.87)
+assert.equal(r.totals.cbs, 7.82); assert.equal(r.totals.ibs, 0.87); assert.equal(r.totals.total, 1100, 'IBS/CBS não somam no total em 2026')
+ok('IBS/CBS 000001 pela TES: base 869,08 (sem ICMS/PIS/COFINS); CBS 0,9% = 7,82; IBS UF 0,1% = 0,87; total da nota não muda')
+
+r = computeTaxes(ibsCtx(), [item({ tesId: 'tes-venda', classTribId: '200034' }), item({ key: 'b', classTribId: '200003' }), item({ key: 'c', classTribId: '410001' })], 0, 0)
+x = r.items[0].taxes.ibsCbs
+assert.equal(x.cbs.reduction, 60); assert.equal(x.cbs.effective, 0.36); assert.equal(x.ibsUf.effective, 0.04); assert.equal(x.base, 790.07); assert.equal(x.cbs.value, 2.84); assert.equal(x.ibsUf.value, 0.32)
+assert.equal(r.items[1].taxes.ibsCbs.cbs.effective, 0); assert.equal(r.items[1].taxes.ibsCbs.cbs.value, 0); assert.equal(r.items[1].taxes.ibsCbs.withGroup, true)
+assert.equal(r.items[2].taxes.ibsCbs.withGroup, false); assert.equal(r.items[2].taxes.ibsCbs.base, 0); assert.deepEqual(r.warnings, [])
+ok('cClassTrib do produto vence a TES: 200034 (redução 60% → CBS 0,36%, IBS 0,04%), 200003 (alíquota zero), 410001 imunidade só com CST')
+
+r = computeTaxes(ibsCtx(), [item({ classTribId: '620001' })], 0, 0)
+assert.ok(r.warnings.some((w) => w.includes('620001')))
+assert.equal(computeTaxes(ibsCtx({ regime: 'simples' }), [item()], 0, 0).items[0].taxes.ibsCbs, null)
+assert.equal(computeTaxes(ibsCtx({ regime: 'simples', params: { ...params, ...ibsParams, MV_IBSCBSSN: true } }), [item()], 0, 0).items[0].taxes.ibsCbs.classTrib, '000001')
+assert.equal(computeTaxes(ibsCtx({ params: { ...params, ...ibsParams, MV_IBSCBS: false } }), [item()], 0, 0).items[0].taxes.ibsCbs, null)
+ok('monofásico (620) avisa que ainda não é emitido; Simples só com MV_IBSCBSSN; MV_IBSCBS desligado não calcula')
 
 console.log(`\n${passed} verificações de impostos passaram`)
