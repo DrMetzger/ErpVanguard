@@ -42,6 +42,33 @@ services:
       db:
         condition: service_healthy
 
+  # Painel da Prime ERP (admin.erpvanguard.com.br). Sem acesso ao Docker nem ao servidor:
+  # só grava pedidos; quem executa é o agente da VPS (infra/agent.sh) pelo 127.0.0.1:3100.
+  control:
+    build: ../api
+    restart: unless-stopped
+    command: ["node", "dist/control/main.js"]
+    environment:
+      CONTROL_DATABASE_URL: postgres://vg_control:${CONTROL_DB_PASSWORD:?}@db:5432/vanguard_control
+      CONTROL_SECRET: ${CONTROL_SECRET:?}
+      AGENT_TOKEN: ${AGENT_TOKEN:?}
+      CONTROL_OWNER_EMAIL: ${CONTROL_OWNER_EMAIL:-kleber.farias@primeerp.com.br}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:3100:3100"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build: ../web
     restart: unless-stopped
@@ -58,6 +85,7 @@ services:
       - ${APP_DIR:-/opt/vanguard}/downloads:/download:ro
     depends_on:
       - api
+      - control
 
 volumes:
   db-data:

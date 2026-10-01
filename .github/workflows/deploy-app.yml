@@ -9,6 +9,7 @@ on:
       - 'infra/docker-compose.yml'
       - 'infra/backup.sh'
       - 'infra/restore.sh'
+      - 'infra/agent.sh'
       - '.github/workflows/deploy-app.yml'
       - '.github/actions/vps-ssh/**'
   workflow_dispatch:
@@ -115,10 +116,31 @@ jobs:
             echo "Arquivo $env_file criado com senhas novas"
           fi
           grep -q '^APP_DOMAIN=' "$env_file" || echo "APP_DOMAIN=$APP_DOMAIN" >> "$env_file"
+          # Painel: senhas próprias, geradas aqui uma única vez (banco do painel, assinatura do login, senha do agente).
+          ( umask 077
+            grep -q '^CONTROL_DB_PASSWORD=' "$env_file" || echo "CONTROL_DB_PASSWORD=$(openssl rand -hex 24)" >> "$env_file"
+            grep -q '^CONTROL_SECRET=' "$env_file" || echo "CONTROL_SECRET=$(openssl rand -hex 48)" >> "$env_file"
+            grep -q '^AGENT_TOKEN=' "$env_file" || echo "AGENT_TOKEN=$(openssl rand -hex 32)" >> "$env_file" )
+          chmod 600 "$env_file"
+
+          cd "$APP_DIR/app/infra"
+          # Banco do painel: usuário sem privilégios, dono só do vanguard_control.
+          docker compose --env-file "$env_file" up -d db
+          for i in $(seq 1 30); do docker compose --env-file "$env_file" exec -T db pg_isready -U vanguard -d vanguard > /dev/null 2>&1 && break; sleep 2; done
+          cdbpass=$(sed -n 's/^CONTROL_DB_PASSWORD=//p' "$env_file" | tail -1)
+          docker compose --env-file "$env_file" exec -T db psql -X -q -U vanguard -d vanguard -v ON_ERROR_STOP=1 <<SQL
+          SELECT 'CREATE ROLE vg_control LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vg_control')
+          \\gexec
+          ALTER ROLE vg_control PASSWORD '$cdbpass';
+          SELECT 'CREATE DATABASE vanguard_control OWNER vg_control' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'vanguard_control')
+          \\gexec
+          -- Cada banco só abre para o próprio dono (clientes não enxergam o ERP principal nem o painel).
+          REVOKE CONNECT ON DATABASE vanguard FROM PUBLIC;
+          REVOKE CONNECT ON DATABASE vanguard_control FROM PUBLIC;
+          SQL
 
           # Pasta do APK (workflow Android) servida em /download
           install -d "$APP_DIR/downloads"
-          cd "$APP_DIR/app/infra"
           docker compose --env-file "$env_file" up -d --build --remove-orphans
           docker image prune -f > /dev/null
 
@@ -168,6 +190,41 @@ jobs:
           journalctl -u vanguard-backup.service -n 3 --no-pager -o cat || true
           REMOTE
 
+      - name: Panel agent
+        run: |
+          # Agente fixo da VPS: busca a fila do painel pelo 127.0.0.1 e executa só a lista fechada de ações.
+          ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR bash -s" <<'REMOTE'
+          set -euo pipefail
+          install -d -m 755 "$APP_DIR/bin"
+          install -d -m 700 "$APP_DIR/tenants"
+          install -m 750 "$APP_DIR/app/infra/agent.sh" "$APP_DIR/bin/agent.sh"
+          cat > /etc/systemd/system/vanguard-agent.service <<UNIT
+          [Unit]
+          Description=Agente do painel da Prime ERP (pedidos do admin.erpvanguard.com.br)
+          After=docker.service
+          Requires=docker.service
+          [Service]
+          Environment=APP_DIR=$APP_DIR
+          Environment=DOCKER_CONFIG=$APP_DIR/.docker
+          ExecStart=/usr/bin/bash $APP_DIR/bin/agent.sh
+          Restart=always
+          RestartSec=5
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ProtectHome=true
+          ProtectSystem=full
+          ReadWritePaths=$APP_DIR
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable vanguard-agent.service > /dev/null
+          systemctl restart vanguard-agent.service
+          sleep 3
+          systemctl is-active vanguard-agent.service
+          journalctl -u vanguard-agent.service -n 3 --no-pager -o cat || true
+          REMOTE
+
       - name: Check public URL
         run: |
           # Na primeira vez o Caddy ainda está emitindo o certificado HTTPS.
@@ -184,7 +241,7 @@ jobs:
       - name: Check admin URL
         run: |
           for i in $(seq 1 20); do
-            if curl -fsS --max-time 10 -o /dev/null "https://admin.erpvanguard.com.br/"; then echo "Painel no ar com HTTPS: https://admin.erpvanguard.com.br"; exit 0; fi
+            if curl -fsS --max-time 10 "https://admin.erpvanguard.com.br/api/health"; then echo; echo "Painel no ar com HTTPS: https://admin.erpvanguard.com.br"; exit 0; fi
             sleep 6
           done
           echo "::warning::https://admin.erpvanguard.com.br ainda não respondeu (DNS propagando ou certificado)"

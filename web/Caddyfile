@@ -1,3 +1,10 @@
+{
+	# Certificado HTTPS dos clientes (<cliente>.erpvanguard.com.br) só para endereço cadastrado no painel.
+	on_demand_tls {
+		ask http://control:3100/api/tls-check
+	}
+}
+
 {$APP_DOMAIN:localhost} {
 	encode zstd gzip
 
@@ -40,18 +47,67 @@
 	}
 }
 
-# Painel da Prime ERP (em construção): só a página inicial, sem acesso ao ERP.
+# Painel da Prime ERP. A rota do agente (/api/agent) nunca é liberada na internet.
 {$ADMIN_DOMAIN:admin.localhost} {
 	encode zstd gzip
-	root * /srv-admin
-	header Cache-Control "no-cache"
-	try_files {path} /index.html
-	file_server
+	@agent path /api/agent /api/agent/*
+	handle @agent {
+		respond 404
+	}
+	handle /api/* {
+		reverse_proxy control:3100
+	}
+	handle {
+		root * /srv-admin
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		X-Robots-Tag "noindex, nofollow"
+		Referrer-Policy "no-referrer"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		-Server
+	}
+}
+
+# Sistemas dos clientes: <cliente>.erpvanguard.com.br → mesmas telas do ERP + API própria do cliente (<cliente>-api).
+# O DNS de cada cliente é criado à mão; o certificado só sai se o cliente existir no painel (on_demand_tls).
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+
+	@tenant header_regexp t Host ^([a-z][a-z0-9-]{1,28}[a-z0-9])\.erpvanguard\.com\.br$
+	handle @tenant {
+		handle /api/* {
+			reverse_proxy {re.t.1}-api:3000
+		}
+		handle /assets/* {
+			root * /srv
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+		handle {
+			root * /srv
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
 }
