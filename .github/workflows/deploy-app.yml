@@ -162,13 +162,13 @@ jobs:
 
           echo "Aguardando a API..."
           for i in $(seq 1 30); do
-            if docker compose --env-file "$env_file" exec -T api wget -qO- http://localhost:3000/api/health < /dev/null 2>/dev/null; then
-              echo; docker compose --env-file "$env_file" ps
+            if docker exec vanguard-api-1 wget -qO- http://127.0.0.1:3000/api/health < /dev/null 2>/dev/null; then
+              echo; docker compose --env-file "$env_file" ps < /dev/null
               exit 0
             fi
             sleep 3
           done
-          docker compose --env-file "$env_file" logs --tail 80 api
+          docker compose --env-file "$env_file" logs --tail 80 api < /dev/null
           exit 1
           REMOTE
 
