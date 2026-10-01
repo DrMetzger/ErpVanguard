@@ -45,6 +45,21 @@ jobs:
             --exclude node_modules --exclude dist \
             api web infra "$VPS_USER@$VPS_HOST:$APP_DIR/app/"
 
+      - name: Panel secrets
+        run: |
+          # Senhas do painel geradas no próprio servidor, uma única vez (antes de qualquer docker compose).
+          ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR bash -s" <<'REMOTE'
+          set -euo pipefail
+          f="$APP_DIR/.env"
+          [ -f "$f" ] || exit 0
+          umask 077
+          grep -q '^CONTROL_DB_PASSWORD=' "$f" || echo "CONTROL_DB_PASSWORD=$(openssl rand -hex 24)" >> "$f"
+          grep -q '^CONTROL_SECRET=' "$f" || echo "CONTROL_SECRET=$(openssl rand -hex 48)" >> "$f"
+          grep -q '^AGENT_TOKEN=' "$f" || echo "AGENT_TOKEN=$(openssl rand -hex 32)" >> "$f"
+          chmod 600 "$f"
+          echo "Senhas do painel conferidas"
+          REMOTE
+
       - name: Backup before update
         run: |
           # Cópia do banco antes de subir a versão nova (migrações); não trava o deploy na primeira vez.
