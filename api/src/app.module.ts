@@ -7,6 +7,7 @@ import { CatalogModule } from './catalog/catalog.module'
 import { BiModule } from './bi/bi.module'
 import { BranchesModule } from './branches/branches.module'
 import { IntegrationsModule } from './integrations/integrations.module'
+import { MarketplaceModule } from './marketplace/marketplace.module'
 import { DevicesModule } from './devices/devices.module'
 import { IdempotencyInterceptor } from './devices/idempotency.interceptor'
 import { DeviceGuard } from './devices/device.guard'
@@ -52,6 +53,7 @@ import { UsersModule } from './users/users.module'
     DevicesModule,
     BranchesModule,
     IntegrationsModule,
+    MarketplaceModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: DeviceGuard }, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor }],

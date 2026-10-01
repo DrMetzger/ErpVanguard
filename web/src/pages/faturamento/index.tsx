@@ -1,5 +1,5 @@
 import { Text, Title } from '@mantine/core'
-import { IconCalendarDollar, IconFileDollar, IconFileInvoice, IconFileText } from '@tabler/icons-react'
+import { IconCalendarDollar, IconFileDollar, IconFileInvoice, IconFileText, IconShoppingCart } from '@tabler/icons-react'
 import { Route } from 'react-router-dom'
 import { CatalogPage } from '../../components/CatalogPage'
 import { ModuleTabs } from '../../components/ModuleTabs'
@@ -9,6 +9,7 @@ import SalesDocForm from './SalesDocForm'
 import SalesDocs from './SalesDocs'
 import SalesInvoiceDetail from './SalesInvoiceDetail'
 import SalesInvoices from './SalesInvoices'
+import MercadoLivre from './MercadoLivre'
 
 export default function Faturamento() {
   const user = useUser()
@@ -29,6 +30,7 @@ export default function Faturamento() {
         { path: 'pedidos', label: 'Pedidos de venda', icon: IconFileText, element: <SalesDocs key="order" kind="order" /> },
         { path: 'notas', label: 'Notas emitidas', icon: IconFileInvoice, element: <SalesInvoices /> },
         { path: 'condicoes', label: 'Condições de pagamento', icon: IconCalendarDollar, element: <CatalogPage name="payment-terms" /> },
+        { path: 'mercadolivre', label: 'Mercado Livre', icon: IconShoppingCart, element: <MercadoLivre /> },
       ]}
       extraRoutes={<>
         <Route path="orcamentos/novo" element={<SalesDocForm key="quote-new" kind="quote" />} />

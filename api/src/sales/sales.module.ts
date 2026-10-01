@@ -11,5 +11,5 @@ import { SalesDocsService } from './sales-docs.service'
 import { SalesEmailService } from './sales-email.service'
 import { SalesController } from './sales.controller'
 
-@Module({ imports: [MailModule, IntegrationsModule], controllers: [QuotesController, SalesController, NumberingController, NfeController, SalesWhatsAppController], providers: [SalesDocsService, SalesEmailService, NfeService, SalesWhatsAppService] })
+@Module({ imports: [MailModule, IntegrationsModule], controllers: [QuotesController, SalesController, NumberingController, NfeController, SalesWhatsAppController], providers: [SalesDocsService, SalesEmailService, NfeService, SalesWhatsAppService], exports: [SalesDocsService] })
 export class SalesModule {}

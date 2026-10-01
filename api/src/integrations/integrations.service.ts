@@ -9,7 +9,11 @@ export interface ProviderDef { label: string; config: string[]; secrets: string[
 // Integrações disponíveis. "ready" = já tem envio/recebimento no sistema; as outras só guardam as chaves por enquanto.
 export const PROVIDERS: Record<string, ProviderDef> = {
   whatsapp: { label: 'WhatsApp (Meta)', ready: true, config: ['phoneNumberId', 'businessAccountId', 'apiVersion', 'templateName', 'templateLanguage', 'testNumber'], secrets: ['accessToken', 'appSecret', 'verifyToken'] },
-  mercadolivre: { label: 'Mercado Livre', ready: false, config: ['clientId', 'redirectUri'], secrets: ['clientSecret'] },
+  mercadolivre: {
+    label: 'Mercado Livre', ready: true,
+    config: ['clientId', 'redirectUri', 'sellerId', 'nickname', 'companyId', 'paymentTermId', 'priceTableId', 'listingType', 'userId', 'tokenExpiresAt', 'oauthState', 'ordersFrom'],
+    secrets: ['clientSecret', 'accessToken', 'refreshToken'],
+  },
   shopee: { label: 'Shopee', ready: false, config: ['partnerId', 'shopId'], secrets: ['partnerKey'] },
   magalu: { label: 'Magalu', ready: false, config: ['clientId'], secrets: ['clientSecret'] },
 }
@@ -81,6 +85,21 @@ export class IntegrationsService {
       `INSERT INTO integrations (provider, enabled, config, secrets, updated_by, updated_at) VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (provider) DO UPDATE SET enabled = EXCLUDED.enabled, config = EXCLUDED.config, secrets = EXCLUDED.secrets, updated_by = EXCLUDED.updated_by, updated_at = now()`,
       [provider, input.enabled ?? row?.enabled ?? false, JSON.stringify(config), JSON.stringify(secrets), userId],
+    )
+  }
+
+  // Atualização interna (tokens renovados, vendedor conectado): junta com o que já existe.
+  async patch(provider: string, input: { config?: Record<string, string | null>; secrets?: Record<string, string | null>; enabled?: boolean }) {
+    this.def(provider)
+    const row = await one(this.db, `SELECT config, secrets, enabled FROM integrations WHERE provider = $1`, [provider])
+    const config: Record<string, string> = { ...(row?.config ?? {}) }
+    for (const [k, v] of Object.entries(input.config ?? {})) { if (v === null || v === '') delete config[k]; else config[k] = v }
+    const secrets: Record<string, Box> = { ...(row?.secrets ?? {}) }
+    for (const [k, v] of Object.entries(input.secrets ?? {})) { if (v === null || v === '') delete secrets[k]; else secrets[k] = encrypt(v) }
+    await this.db.query(
+      `INSERT INTO integrations (provider, enabled, config, secrets, updated_at) VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (provider) DO UPDATE SET enabled = EXCLUDED.enabled, config = EXCLUDED.config, secrets = EXCLUDED.secrets, updated_at = now()`,
+      [provider, input.enabled ?? row?.enabled ?? false, JSON.stringify(config), JSON.stringify(secrets)],
     )
   }
 

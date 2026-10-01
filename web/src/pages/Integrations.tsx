@@ -1,4 +1,9 @@
-import { Accordion, Alert, Badge, Button, Card, CopyButton, Group, List, PasswordInput, SimpleGrid, Stack, Switch, Table, Text, TextInput, Title } from '@mantine/core'
+import { Accordion, Alert, Badge, Button, Card, CopyButton, Group, List, PasswordInput, Select, SimpleGrid, Stack, Switch, Table, Text, TextInput, Title } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { useSearchParams } from 'react-router-dom'
+import { useOptions } from '../lib/catalog'
+import { useUser } from '../lib/auth'
+import { branchLabel } from '../lib/types'
 import { IconBrandWhatsapp, IconBuildingStore, IconCheck, IconCopy, IconPlugConnected, IconShoppingBag, IconShoppingCart } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Loading } from '../components/ui'
@@ -24,6 +29,7 @@ export default function Integrations() {
   const logs = useApi<Log[]>('/integrations/logs')
   if (loading || !data) return <Loading />
   const wa = data.find((i) => i.provider === 'whatsapp')!
+  const ml = data.find((i) => i.provider === 'mercadolivre')!
   return (
     <Stack>
       <div>
@@ -45,6 +51,7 @@ export default function Integrations() {
         ))}
       </SimpleGrid>
       <WhatsAppCard it={wa} onSaved={() => { reload(); logs.reload() }} />
+      <MercadoLivreCard it={ml} onSaved={() => { reload(); logs.reload() }} />
       <Card withBorder>
         <Group justify="space-between" mb="xs"><Text fw={700}>Histórico</Text><Button size="xs" variant="subtle" onClick={logs.reload}>Atualizar</Button></Group>
         {!logs.data?.length ? <Text size="sm" c="dimmed">Nada enviado ou recebido ainda.</Text> : (
@@ -146,6 +153,92 @@ function WhatsAppCard({ it, onSaved }: { it: Integration; onSaved: () => void })
               <List.Item>Preencha os campos acima, salve, ative e clique em <b>Enviar teste</b> para o seu celular.</List.Item>
             </List>
             <Text size="xs" c="dimmed" mt="sm">A Meta cobra por conversa iniciada pela empresa (modelos de utilidade); respostas do cliente dentro de 24 horas não têm custo extra.</Text>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
+    </Card>
+  )
+}
+
+// Volta do login do Mercado Livre (?ml=ok&conta=… ou ?ml=erro&motivo=…)
+function useMlReturn(onBack: () => void) {
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const r = params.get('ml')
+    if (!r) return
+    if (r === 'ok') notifications.show({ color: 'teal', message: `Mercado Livre conectado: ${params.get('conta') ?? ''}` })
+    else notifications.show({ color: 'red', autoClose: false, message: `Mercado Livre não conectou: ${params.get('motivo') ?? 'erro'}` })
+    setParams({}, { replace: true })
+    onBack()
+  }, [params])
+}
+
+function MercadoLivreCard({ it, onSaved }: { it: Integration; onSaved: () => void }) {
+  const user = useUser()
+  const [enabled, setEnabled] = useState(it.enabled)
+  const [cfg, setCfg] = useState<Record<string, string>>({ ...it.config })
+  const [secret, setSecret] = useState('')
+  const terms = useOptions('payment-terms')
+  const tables = useOptions('price-tables')
+  const branches = (user.branches ?? []).map((b) => ({ value: b.id, label: branchLabel(b) }))
+  const { busy, run } = useAction()
+  useMlReturn(onSaved)
+  useEffect(() => { setEnabled(it.enabled); setCfg({ ...it.config }) }, [it])
+  const set = (k: string) => (v: string | null) => setCfg((c) => ({ ...c, [k]: v ?? '' }))
+  const callback = cfg.redirectUri || `${origin()}/api/integrations/mercadolivre/callback`
+  const hook = `${origin()}/api/webhooks/mercadolivre`
+  const connected = it.secrets.accessToken?.set && it.status !== 'desconectado'
+  const body = () => ({ enabled, config: { clientId: cfg.clientId ?? '', companyId: cfg.companyId ?? '', paymentTermId: cfg.paymentTermId ?? '', priceTableId: cfg.priceTableId ?? '', listingType: cfg.listingType ?? '' }, secrets: secret.trim() ? { clientSecret: secret.trim() } : {} })
+  const save = () => run(async () => { await api('/integrations/mercadolivre', { method: 'PUT', body: body() }); setSecret(''); onSaved() }, 'Mercado Livre salvo')
+  const connect = () => run(async () => {
+    await api('/integrations/mercadolivre', { method: 'PUT', body: { ...body(), enabled: true } })
+    const r = await api<{ url: string }>('/integrations/mercadolivre/authorize', { method: 'POST' })
+    window.location.href = r.url
+  })
+  const disconnect = () => confirm('Desconectar a conta do Mercado Livre? Vendas e estoque param de sincronizar.') && run(async () => { await api('/integrations/mercadolivre/disconnect', { method: 'POST' }); onSaved() }, 'Desconectado')
+
+  return (
+    <Card withBorder>
+      <Group justify="space-between" mb="sm">
+        <Group gap="xs"><IconShoppingCart size={22} color="var(--mantine-color-yellow-6)" /><Text fw={700}>Mercado Livre</Text>
+          {connected && <Badge variant="light" color="teal">{it.config.nickname}</Badge>}</Group>
+        <Switch label="Ativo" checked={enabled} onChange={(e) => setEnabled(e.currentTarget.checked)} />
+      </Group>
+      {it.lastError && it.status === 'erro' && <Alert color="red" mb="sm">{it.lastError}</Alert>}
+      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        <TextInput label="Client ID (ID do aplicativo)" value={cfg.clientId ?? ''} onChange={(e) => set('clientId')(e.currentTarget.value.trim())} />
+        <Secret label="Client Secret (chave secreta)" it={it} k="clientSecret" value={secret} onChange={setSecret} />
+        <Select label="Filial do Mercado Livre" description="Estoque enviado e onde as vendas viram pedido" data={branches} value={cfg.companyId || null} onChange={set('companyId')} />
+        <Select label="Condição de pagamento dos pedidos" description="O Mercado Livre repassa o dinheiro: normalmente à vista" data={terms} value={cfg.paymentTermId || null} onChange={set('paymentTermId')} searchable />
+        <Select label="Tabela de preço (opcional)" description="Vazio = preço de venda do produto" data={tables} value={cfg.priceTableId || null} onChange={set('priceTableId')} clearable searchable />
+        <Select label="Tipo de anúncio padrão" data={[{ value: 'gold_special', label: 'Clássico' }, { value: 'gold_pro', label: 'Premium' }]} value={cfg.listingType || 'gold_special'} onChange={set('listingType')} allowDeselect={false} />
+      </SimpleGrid>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} mt="sm">
+        {[['URL de redirecionamento (no app do ML)', callback], ['URL de notificações (tópico orders_v2)', hook]].map(([label, value]) => (
+          <Group key={label} gap="xs" align="flex-end" wrap="nowrap">
+            <TextInput label={label} value={value} readOnly style={{ flex: 1, minWidth: 0 }} />
+            <CopyButton value={value!}>{({ copied, copy }) => <Button variant="default" px="xs" onClick={copy} aria-label="Copiar">{copied ? <IconCheck size={16} /> : <IconCopy size={16} />}</Button>}</CopyButton>
+          </Group>
+        ))}
+      </SimpleGrid>
+      <Group mt="md" justify="flex-end" gap="xs">
+        {connected && <Button variant="subtle" color="red" onClick={disconnect} loading={busy}>Desconectar</Button>}
+        <Button variant="light" color="yellow" onClick={connect} loading={busy} disabled={!cfg.clientId || (!secret && !it.secrets.clientSecret?.set)}>{connected ? 'Reconectar conta' : 'Conectar conta'}</Button>
+        <Button onClick={save} loading={busy}>Salvar</Button>
+      </Group>
+      <Accordion mt="md" variant="contained">
+        <Accordion.Item value="passo">
+          <Accordion.Control>Passo a passo no Mercado Livre (uma vez só)</Accordion.Control>
+          <Accordion.Panel>
+            <List type="ordered" size="sm" spacing={6}>
+              <List.Item>Entre em <b>developers.mercadolivre.com.br</b> com a conta da loja › <b>Minhas aplicações</b> › <b>Criar aplicação</b>.</List.Item>
+              <List.Item>Em <b>URI de redirect</b>, cole a URL de redirecionamento acima.</List.Item>
+              <List.Item>Em <b>Escopos</b>, marque leitura e escrita (offline access, read, write).</List.Item>
+              <List.Item>Em <b>Notificações</b>, cole a URL de notificações e marque o tópico <b>Orders (orders_v2)</b>.</List.Item>
+              <List.Item>Copie o <b>Client ID</b> e o <b>Client Secret</b> da aplicação para os campos acima.</List.Item>
+              <List.Item>Escolha a filial e a condição de pagamento, salve e clique em <b>Conectar conta</b>. Você vai para o Mercado Livre, autoriza e volta para cá conectado.</List.Item>
+              <List.Item>Depois, em <b>Faturamento › Mercado Livre</b>, vincule os anúncios que já existem (código MLB…) ou publique os produtos.</List.Item>
+            </List>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
