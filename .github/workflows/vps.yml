@@ -7,7 +7,7 @@ on:
       task:
         description: Tarefa
         type: choice
-        options: [status, setup, ai-check]
+        options: [status, setup, ai-check, users]
         default: status
 
 concurrency:
@@ -47,6 +47,18 @@ jobs:
           echo "== Agente"; systemctl is-active vanguard-agent.service 2>/dev/null; sudo journalctl -u vanguard-agent.service -n 5 --no-pager -o cat 2>/dev/null
           for n in vanguard-api-1 vanguard-control-1 vanguard-web-1; do echo "== Últimas linhas: $n"; sudo docker logs --tail 15 "$n" 2>&1 | grep -v RouterExplorer | tail -12; done
           REMOTE
+
+      - name: Users
+        if: inputs.task == 'users'
+        run: |
+          # Só e-mail, perfil e situação (nunca senha).
+          ssh "$VPS_USER@$VPS_HOST" 'sudo docker exec -i vanguard-db-1 psql -X -U vanguard -d vanguard' <<'SQL'
+          SELECT email, role, active, created_at, last_login_at, two_factor_email IS NOT NULL AS email_codigo FROM users ORDER BY created_at;
+          SELECT name FROM migrations ORDER BY id DESC LIMIT 3;
+          SELECT key, value FROM app_settings WHERE key = 'security';
+          SELECT u.email, c.created_at, c.used, c.attempts FROM login_codes c JOIN users u ON u.id = c.user_id ORDER BY c.id DESC LIMIT 5;
+          SQL
+          ssh "$VPS_USER@$VPS_HOST" 'sudo docker logs --since 2h vanguard-api-1 2>&1 | grep -iE "login|código|Entrada|error" | tail -20'
 
       - name: Setup
         if: inputs.task == 'setup'
