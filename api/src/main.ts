@@ -10,6 +10,8 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })
   // XML de NF-e com muitos itens e certificados A1 passam de 100 KB.
   app.useBodyParser('json', { limit: '5mb' })
+  // Atrás do Caddy: o IP de quem acessa vem no X-Forwarded-For (limite de tentativas do login).
+  app.set('trust proxy', 1)
   app.setGlobalPrefix('api')
   app.enableCors({ origin: config.corsOrigins, allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Idempotency-Key', 'X-Device-Id', 'X-Branch-Id'], exposedHeaders: ['Content-Disposition', 'Idempotent-Replay'] })
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))

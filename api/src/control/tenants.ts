@@ -145,13 +145,14 @@ export class TenantsService {
     return { id: job.id as string, kind: job.kind as string, slug: t.slug as string, email: t.admin_email as string }
   }
 
-  async finishJob(id: string, ok: boolean, message: string, adminPassword?: string) {
+  async finishJob(id: string, ok: boolean, message: string, adminPassword?: string, setupToken?: string) {
     const job = await q1(`UPDATE agent_jobs SET status = $2, message = $3, finished_at = now() WHERE id = $1 AND status = 'executando' RETURNING tenant_id, kind`, [id, ok ? 'ok' : 'erro', message.slice(0, 2000)])
     if (!job) throw new NotFoundException('Pedido não está em execução')
     const tid = job.tenant_id
     await q(`UPDATE tenants SET step = NULL, updated_at = now() WHERE id = $1`, [tid])
     await this.event(tid, ok ? 'agente' : 'erro', `${job.kind}: ${message || (ok ? 'ok' : 'erro')}`)
     if (job.kind === 'criar' && adminPassword) await q(`UPDATE tenants SET admin_password = $2 WHERE id = $1`, [tid, seal(adminPassword)])
+    if (job.kind === 'criar' && setupToken) await q(`UPDATE tenants SET setup_token = $2 WHERE id = $1`, [tid, seal(setupToken)])
     if (!ok) {
       if (job.kind === 'criar') await q(`UPDATE tenants SET status = 'erro', last_error = $2 WHERE id = $1`, [tid, message.slice(0, 2000)])
       return
@@ -186,8 +187,10 @@ export class TenantsService {
         const adminPass = open(t.admin_password)
         await q(`UPDATE tenants SET step = 'configuracao' WHERE id = $1`, [id])
         const api = tenantApi(t.slug)
+        // Chave de configuração inicial: o login do cliente exige código por e-mail, que o painel não recebe.
+        const setup = t.setup_token ? open(t.setup_token) : null
         const call = async (method: string, path: string, body?: unknown, token?: string) => {
-          const r = await fetch(`${api}${path}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20_000) })
+          const r = await fetch(`${api}${path}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(setup ? { 'X-Setup-Token': setup } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20_000) })
           const data: any = await r.json().catch(() => null)
           if (!r.ok) throw new Error(`${path}: ${Array.isArray(data?.message) ? data.message.join('; ') : data?.message ?? r.status}`)
           return data
@@ -203,7 +206,7 @@ export class TenantsService {
           .then(() => this.event(id, 'email', `Acesso enviado para ${t.admin_email}`))
           .catch((e) => this.event(id, 'aviso', `Não consegui enviar o e-mail de acesso: ${(e as Error).message}`))
         // A senha provisória não fica guardada no painel.
-        await q(`UPDATE tenants SET admin_password = NULL, configured = true WHERE id = $1`, [id])
+        await q(`UPDATE tenants SET admin_password = NULL, setup_token = NULL, configured = true WHERE id = $1`, [id])
       }
       await q(`UPDATE tenants SET status = 'ativo', step = NULL, last_error = NULL, updated_at = now() WHERE id = $1`, [id])
       await this.event(id, 'pronto', `Sistema no ar em ${url(t.slug)}`)

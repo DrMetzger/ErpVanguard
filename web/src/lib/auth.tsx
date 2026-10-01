@@ -3,10 +3,13 @@ import { api, ApiError, getBranchId, getToken, setBranchId, setToken } from './a
 import { clearOfflineData } from './offline'
 import type { User } from './types'
 
+export interface LoginChallenge { challenge: string; sentTo: string; minutes: number }
+
 interface AuthState {
   user: User | null
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<LoginChallenge | null>
+  verify: (challenge: string, code: string) => Promise<void>
   logout: () => void
   refresh: () => Promise<void>
   switchBranch: (id: string) => void
@@ -47,8 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('vanguard:logout', onLogout)
   }, [])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { token, user } = await api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: { email, password } })
+  // 1ª etapa (senha): o servidor manda o código por e-mail e devolve o desafio para a 2ª etapa.
+  const login = useCallback(async (email: string, password: string): Promise<LoginChallenge | null> => {
+    const r = await api<{ token?: string; user?: User } & Partial<LoginChallenge>>('/auth/login', { method: 'POST', body: { email, password } })
+    if (r.challenge) return { challenge: r.challenge, sentTo: r.sentTo ?? '', minutes: r.minutes ?? 10 }
+    setToken(r.token!)
+    setUser(keepBranch(r.user!))
+    return null
+  }, [])
+
+  const verify = useCallback(async (challenge: string, code: string) => {
+    const { token, user } = await api<{ token: string; user: User }>('/auth/verify', { method: 'POST', body: { challenge, code } })
     setToken(token)
     setUser(keepBranch(user))
   }, [])
@@ -70,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
-  return <AuthContext.Provider value={{ user, loading, login, logout, refresh, switchBranch }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, loading, login, verify, logout, refresh, switchBranch }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

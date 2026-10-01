@@ -12,6 +12,7 @@ export interface User {
   defaultBranchId?: string | null
   branches?: Branch[] // filiais liberadas (vem no login e em /auth/me)
   branchId?: string | null // filial da sessão
+  twoFactorEmail?: string | null
 }
 
 export interface Branch { id: string; code: string; name: string; tradeName: string | null; uf: string; isHead: boolean }

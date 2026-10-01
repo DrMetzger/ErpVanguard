@@ -34,6 +34,7 @@ export async function migrate() {
       status varchar(12) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','executando','ok','erro')),
       message text, requested_by varchar(200), created_at timestamptz NOT NULL DEFAULT now(), started_at timestamptz, finished_at timestamptz);
     CREATE INDEX IF NOT EXISTS agent_jobs_pending ON agent_jobs (created_at) WHERE status = 'pendente';
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS setup_token text;
     CREATE TABLE IF NOT EXISTS agent_state (id int PRIMARY KEY DEFAULT 1 CHECK (id = 1), main_image varchar(100), seen_at timestamptz);
   `)
   if (control.ownerEmail) await db.query(`INSERT INTO control_admins (email, name) VALUES ($1, 'Administrador') ON CONFLICT (email) DO NOTHING`, [control.ownerEmail])

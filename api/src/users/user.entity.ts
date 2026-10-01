@@ -37,6 +37,10 @@ export class User {
   @Column({ name: 'default_branch_id', type: 'uuid', nullable: true })
   defaultBranchId: string | null
 
+  // Recebe o código do login em duas etapas (vazio = o e-mail de login). Só o administrador vê.
+  @Column({ name: 'two_factor_email', type: 'varchar', nullable: true, select: false })
+  twoFactorEmail?: string | null
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 

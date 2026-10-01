@@ -5,6 +5,7 @@ import { config } from '../config'
 
 export interface GeminiSettings { apiKey: string | null; model: string; fallbackModels: string[]; source: 'tela' | 'servidor' | 'nenhuma' }
 export interface NfeSettings { autoAi: boolean }
+export interface SecuritySettings { twoFactor: boolean }
 export interface CompanySettings { name: string; cnpj: string; uf: string }
 export interface SerasaSettings { enabled: boolean; environment: 'homologacao' | 'producao'; clientId: string | null; clientSecret: string | null }
 export type SmtpSecurity = 'ssl' | 'starttls' | 'nenhuma'
@@ -92,6 +93,15 @@ export class SettingsService {
 
   async nfe(): Promise<NfeSettings> {
     return { autoAi: false, ...((await this.read<NfeSettings>('nfe')) ?? {}) }
+  }
+
+  // Login em duas etapas: ligado por padrão.
+  async security(): Promise<SecuritySettings> {
+    return { twoFactor: true, ...((await this.read<SecuritySettings>('security')) ?? {}) }
+  }
+
+  async saveSecurity(input: SecuritySettings, userId: string) {
+    await this.write('security', { twoFactor: !!input.twoFactor }, userId)
   }
 
   async saveNfe(input: NfeSettings, userId: string) {

@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import * as bcrypt from 'bcryptjs'
-import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MinLength } from 'class-validator'
+import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator'
 import { DataSource, Repository } from 'typeorm'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { requireAdmin } from '../common/access'
@@ -15,6 +15,7 @@ class CreateUserDto {
   @IsOptional() @IsArray() @ArrayUnique() @IsIn(PERMISSIONS, { each: true }) permissions?: Permission[]
   @IsOptional() @IsArray() @ArrayUnique() @IsUUID('all', { each: true }) branchIds?: string[]
   @IsOptional() @IsUUID() defaultBranchId?: string | null
+  @IsOptional() @ValidateIf((o) => !!o.twoFactorEmail) @IsEmail({}, { message: 'E-mail do código inválido' }) @MaxLength(200) twoFactorEmail?: string | null
 }
 
 class UpdateUserDto {
@@ -25,6 +26,7 @@ class UpdateUserDto {
   @IsOptional() @IsString() @MinLength(8, { message: 'A senha precisa ter pelo menos 8 caracteres' }) password?: string
   @IsOptional() @IsArray() @ArrayUnique() @IsUUID('all', { each: true }) branchIds?: string[]
   @IsOptional() @IsUUID() defaultBranchId?: string | null
+  @IsOptional() @ValidateIf((o) => !!o.twoFactorEmail) @IsEmail({}, { message: 'E-mail do código inválido' }) @MaxLength(200) twoFactorEmail?: string | null
 }
 
 // Filiais liberadas precisam existir; a padrão precisa estar entre as liberadas (vazio = todas).
@@ -53,8 +55,13 @@ export class UsersController {
 
   // Lista enxuta usada nos seletores (grupos, alçadas) por qualquer usuário logado.
   @Get('users')
-  list() {
-    return this.users.find({ order: { name: 'ASC' } })
+  async list(@CurrentUser() me: User) {
+    const rows = await this.users.find({ order: { name: 'ASC' } })
+    if (me.role !== 'admin') return rows
+    // O administrador vê também o e-mail que recebe o código do login.
+    const extra: { id: string; e: string | null }[] = await this.db.query(`SELECT id, two_factor_email AS e FROM users`)
+    const map = new Map(extra.map((r) => [r.id, r.e]))
+    return rows.map((u) => ({ ...u, twoFactorEmail: map.get(u.id) ?? null }))
   }
 
   @Post('users')
@@ -71,6 +78,7 @@ export class UsersController {
         permissions: dto.permissions ?? [],
         branchIds: dto.branchIds ?? [],
         defaultBranchId: dto.defaultBranchId ?? null,
+        twoFactorEmail: dto.twoFactorEmail?.trim().toLowerCase() || null,
         passwordHash: await bcrypt.hash(dto.password, 12),
       }),
     )
@@ -91,6 +99,7 @@ export class UsersController {
       await checkBranches(this.db, dto.branchIds ?? user.branchIds, dto.defaultBranchId !== undefined ? dto.defaultBranchId : user.defaultBranchId)
     }
     Object.assign(user, fields)
+    if (dto.twoFactorEmail !== undefined) user.twoFactorEmail = dto.twoFactorEmail?.trim().toLowerCase() || null
     if (password) user.passwordHash = await bcrypt.hash(password, 12)
     const { passwordHash: _, ...profile } = await this.users.save(user)
     return profile

@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm'
 import { resolveBranch } from '../branches/branch.context'
 import type { Request } from 'express'
 import { UsersService } from '../users/users.service'
+import { SESSION } from './auth.controller'
 import { IS_PUBLIC } from './public.decorator'
 
 // Toda rota exige token, exceto as marcadas com @Public().
@@ -25,12 +26,14 @@ export class AuthGuard implements CanActivate {
     const [type, token] = request.headers.authorization?.split(' ') ?? []
     if (type !== 'Bearer' || !token) throw new UnauthorizedException()
 
-    let payload: { sub: string }
+    let payload: { sub: string; typ?: string }
     try {
       payload = await this.jwt.verifyAsync(token)
     } catch {
       throw new UnauthorizedException()
     }
+    // Só a sessão aberta depois do código por e-mail (o desafio do código e tokens antigos não valem).
+    if (payload.typ !== SESSION) throw new UnauthorizedException()
     const user = await this.users.findById(payload.sub)
     if (!user) throw new UnauthorizedException()
     request.user = user

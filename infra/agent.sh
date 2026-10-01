@@ -117,6 +117,8 @@ do_create() {
       echo "NODE_ENV=production"
     } > "$TDIR/app.env.part" && mv "$TDIR/app.env.part" "$TDIR/app.env" )
   fi
+  # Chave de uso único para o painel configurar a matriz antes do primeiro login do cliente (que exige o código por e-mail).
+  grep -q '^SETUP_TOKEN=' "$TDIR/app.env" || ( umask 077; echo "SETUP_TOKEN=$(rand_hex 32)" >> "$TDIR/app.env" )
   local dbpass; dbpass="$(sed -n "s|^DATABASE_URL=postgres://$DBUSER:\([a-f0-9]*\)@.*|\1|p" "$TDIR/app.env")"
   [[ "$dbpass" =~ ^[a-f0-9]{48}$ ]] || { echo "Configuração do cliente inválida em $TDIR/app.env"; return 1; }
 
@@ -188,12 +190,14 @@ finish() {
   if [ -n "$RESULT_PASS" ]; then
     ( umask 077; printf %s "$RESULT_PASS" > "$TDIR/.pass-send" )
     args+=(--data-urlencode "adminPassword@$TDIR/.pass-send")
+    ( umask 077; sed -n 's/^SETUP_TOKEN=\([a-f0-9]\{64\}\)$/\1/p' "$TDIR/app.env" | tr -d '\n' > "$TDIR/.setup-send" )
+    [ -s "$TDIR/.setup-send" ] && args+=(--data-urlencode "setupToken@$TDIR/.setup-send")
   fi
   for _ in 1 2 3 4 5; do
     panel -o /dev/null -X POST "${args[@]}" "$PANEL/jobs/$1" && break
     sleep 5
   done
-  rm -f "${TDIR:-/nonexistent}/.pass-send"
+  rm -f "${TDIR:-/nonexistent}/.pass-send" "${TDIR:-/nonexistent}/.setup-send"
 }
 
 report_state() {

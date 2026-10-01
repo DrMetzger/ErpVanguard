@@ -114,7 +114,8 @@ try {
     const ctl = dbExec('psql', '-X', '-tA', '-U', 'vanguard', '-d', 'vanguard_control', '-c', `SELECT admin_password IS NULL AND configured FROM tenants WHERE slug = '${SLUG}'`).trim()
     assert.equal(ctl, 't')
     // Entra no sistema do cliente (rede interna) e confere a matriz e o compartilhamento.
-    const js = `const a='http://localhost:3000/api';(async()=>{const r=await fetch(a+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.argv[1],password:process.argv[2]})});const {token}=await r.json();const h={Authorization:'Bearer '+token};const c=await (await fetch(a+'/catalog/companies',{headers:h})).json();const m=await (await fetch(a+'/branch-modes',{headers:h})).json();console.log(JSON.stringify({c,m}))})()`
+    const js = `const a='http://localhost:3000/api';(async()=>{const r=await fetch(a+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Setup-Token':process.env.SETUP_TOKEN},body:JSON.stringify({email:process.argv[1],password:process.argv[2]})});const {token}=await r.json();const h={Authorization:'Bearer '+token};const c=await (await fetch(a+'/catalog/companies',{headers:h})).json();const m=await (await fetch(a+'/branch-modes',{headers:h})).json();console.log(JSON.stringify({c,m}))})()`
+    // O login do cliente exige código por e-mail; aqui entra com a chave de configuração (só vale antes do 1º login real).
     const out = JSON.parse(execFileSync('docker', ['exec', `vanguard-t-${SLUG}`, 'node', '-e', js, dto.adminEmail, pass], { encoding: 'utf8' }))
     assert.equal(out.c.length, 1)
     assert.equal(out.c[0].document, dto.document)

@@ -37,7 +37,8 @@ export class AgentController {
   async finish(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: Record<string, string>) {
     checkAgent(req)
     const pass = typeof body.adminPassword === 'string' && /^[A-Za-z0-9]{12,40}$/.test(body.adminPassword) ? body.adminPassword : undefined
-    await this.tenants.finishJob(id, body.status === 'ok', String(body.message ?? '').slice(0, 2000), pass)
+    const setup = typeof body.setupToken === 'string' && /^[a-f0-9]{64}$/.test(body.setupToken) ? body.setupToken : undefined
+    await this.tenants.finishJob(id, body.status === 'ok', String(body.message ?? '').slice(0, 2000), pass, setup)
   }
 
   // Situação dos sistemas: "main=<imagem>" e "tenants=<cliente>:<rodando|parado>:<imagem>,..."

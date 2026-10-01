@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Post, Put, ServiceUnavailableException } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, HttpCode, Logger, Post, Put, ServiceUnavailableException } from '@nestjs/common'
 import { Type } from 'class-transformer'
 import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import { CurrentUser } from '../auth/current-user.decorator'
@@ -27,6 +27,10 @@ class SerasaDto {
   @IsOptional() @IsBoolean() clearSecret?: boolean
 }
 
+class SecurityDto {
+  @IsBoolean() twoFactor: boolean
+}
+
 class NfeDto {
   @IsBoolean() autoAi: boolean
 }
@@ -51,6 +55,8 @@ class CompanyDto {
 
 @Controller('settings')
 export class SettingsController {
+  private readonly log = new Logger('Seguranca')
+
   constructor(private readonly settings: SettingsService) {}
 
   @Get()
@@ -66,6 +72,7 @@ export class SettingsController {
         fallbackModels: gemini.fallbackModels,
       },
       nfe: await this.settings.nfe(),
+      security: await this.settings.security(),
       serasa: await this.settings.serasa().then((s) => ({ enabled: s.enabled, environment: s.environment, clientId: s.clientId, secretHint: s.clientSecret ? `••••${s.clientSecret.slice(-4)}` : null })),
       company: await this.settings.company(),
       // A senha nunca sai daqui: só o aviso de que existe.
@@ -98,6 +105,15 @@ export class SettingsController {
   async saveSmtp(@CurrentUser() me: User, @Body() dto: SmtpDto) {
     requireAdmin(me)
     await this.settings.saveSmtp(dto, me.id)
+    return this.get(me)
+  }
+
+  // Ligar/desligar o código por e-mail no login de todos os usuários (só administrador).
+  @Put('security')
+  async saveSecurity(@CurrentUser() me: User, @Body() dto: SecurityDto) {
+    requireAdmin(me)
+    await this.settings.saveSecurity(dto, me.id)
+    this.log.warn(`Login em duas etapas ${dto.twoFactor ? 'LIGADO' : 'DESLIGADO'} por ${me.email}`)
     return this.get(me)
   }
 

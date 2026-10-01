@@ -62,7 +62,7 @@ export default function Users() {
 function UserForm({ user, onClose, onSaved }: { user: Partial<User>; onClose: () => void; onSaved: () => void }) {
   const isNew = !user.id
   const [form, setForm] = useState({
-    name: user.name ?? '', email: user.email ?? '', password: '', role: user.role ?? 'user',
+    name: user.name ?? '', email: user.email ?? '', twoFactorEmail: user.twoFactorEmail ?? '', password: '', role: user.role ?? 'user',
     permissions: (user.permissions ?? ['solicitante']) as string[], active: user.active ?? true,
     branchIds: user.branchIds ?? [], defaultBranchId: user.defaultBranchId ?? null,
   })
@@ -73,7 +73,7 @@ function UserForm({ user, onClose, onSaved }: { user: Partial<User>; onClose: ()
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const body = { name: form.name, role: form.role, permissions: form.permissions, branchIds: form.branchIds, defaultBranchId: form.defaultBranchId }
+    const body = { name: form.name, role: form.role, permissions: form.permissions, branchIds: form.branchIds, defaultBranchId: form.defaultBranchId, twoFactorEmail: form.twoFactorEmail.trim() || null }
     run(() => (isNew
       ? api('/users', { method: 'POST', body: { ...body, email: form.email, password: form.password } })
       : api(`/users/${user.id}`, { method: 'PATCH', body: { ...body, active: form.active, ...(form.password ? { password: form.password } : {}) } })
@@ -85,6 +85,8 @@ function UserForm({ user, onClose, onSaved }: { user: Partial<User>; onClose: ()
       <Stack component="form" onSubmit={submit}>
         <TextInput label="Nome" required data-autofocus value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} />
         <TextInput label="E-mail" type="email" required disabled={!isNew} value={form.email} onChange={(e) => setForm({ ...form, email: e.currentTarget.value })} />
+        <TextInput label="E-mail para o código" type="email" placeholder={form.email || 'O mesmo do login'} description="Recebe o código de 6 números do login em duas etapas. Em branco, vai para o e-mail de login."
+          value={form.twoFactorEmail} onChange={(e) => setForm({ ...form, twoFactorEmail: e.currentTarget.value })} />
         <PasswordInput label={isNew ? 'Senha inicial' : 'Nova senha'} description={isNew ? 'Pelo menos 8 caracteres' : 'Deixe vazio para manter a atual'} required={isNew} minLength={8} autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.currentTarget.value })} />
         <div>
           <Text size="sm" fw={500} mb={6}>Tipo de acesso</Text>

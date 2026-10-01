@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Card, Group, PasswordInput, Select, SimpleGrid, Stack, Switch, TagsInput, Text, TextInput, ThemeIcon, Title } from '@mantine/core'
-import { IconBrain, IconBuilding, IconShieldCheck, IconCircleCheck, IconFileCode, IconKey, IconMail, IconPlugConnected, IconSend } from '@tabler/icons-react'
+import { IconBrain, IconBuilding, IconShieldCheck, IconCircleCheck, IconFileCode, IconKey, IconLock, IconMail, IconPlugConnected, IconSend } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loading } from '../components/ui'
@@ -9,6 +9,7 @@ import { useAction, useApi } from '../lib/hooks'
 interface SettingsData {
   gemini: { configured: boolean; source: 'tela' | 'servidor' | 'nenhuma'; apiKeyHint: string | null; model: string; fallbackModels: string[] }
   nfe: { autoAi: boolean }
+  security: { twoFactor: boolean }
   company: { name: string; cnpj: string; uf: string }
   serasa: { enabled: boolean; environment: 'homologacao' | 'producao'; clientId: string | null; secretHint: string | null }
   smtp: {
@@ -54,6 +55,25 @@ export default function Settings() {
       <Stack gap="lg" maw={900}>
         <Section icon={IconBuilding} title="Empresas, filiais, logo e certificado A1" description="Ficam em Administração › Empresas: dados de cada filial (a UF define CFOP 5xxx ou 6xxx), logo do DANFE e dos relatórios e o certificado digital.">
           <Group justify="flex-end"><Button component={Link} to="/empresas" variant="light">Abrir Administração › Empresas</Button></Group>
+        </Section>
+
+        <Section icon={IconLock} title="Login em duas etapas (código por e-mail)" description="Depois da senha, o usuário recebe um código de 6 números por e-mail para entrar. Protege a empresa mesmo se alguém descobrir uma senha.">
+          <Stack>
+            <Switch
+              checked={data.security.twoFactor}
+              onChange={(e) => {
+                const on = e.currentTarget.checked
+                if (!on && !confirm('Desligar o código por e-mail no login de TODOS os usuários? Quem souber uma senha passa a entrar direto.')) return
+                void put('security', { twoFactor: on }, on ? 'Login em duas etapas ligado' : 'Login em duas etapas desligado')
+              }}
+              label="Exigir o código por e-mail no login"
+              description={data.security.twoFactor ? 'Ligado (recomendado): todos os usuários, no navegador e no app.' : 'Desligado: entra só com e-mail e senha.'}
+              color="teal"
+            />
+            {!data.security.twoFactor && <Alert color="red" title="Login em duas etapas desligado">Recomendamos deixar ligado.</Alert>}
+            {data.security.twoFactor && !data.smtp.configured && <Alert color="yellow" title="Configure o e-mail abaixo">Sem o servidor de e-mail ninguém recebe o código.</Alert>}
+            <Text size="sm" c="dimmed">O e-mail que recebe o código de cada usuário é definido em Administração › Usuários (campo "E-mail para o código"). Em branco, vai para o e-mail de login.</Text>
+          </Stack>
         </Section>
 
         <SmtpSection data={data.smtp} onSaved={setData} />
