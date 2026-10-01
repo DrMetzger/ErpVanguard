@@ -3,7 +3,7 @@ import {
   ActionIcon, AppShell, Box, Burger, Divider, Group, NavLink, ScrollArea, Stack, Text, Tooltip, UnstyledButton, useComputedColorScheme, useMantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure, useLocalStorage, useMediaQuery } from '@mantine/hooks'
-import { IconAdjustments, IconBrandAndroid, IconBuilding, IconDeviceMobile, IconDoorExit, IconForms, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMailCog, IconMoon, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
+import { IconAdjustments, IconBrandAndroid, IconBuilding, IconDeviceMobile, IconDoorExit, IconForms, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMailCog, IconMoon, IconPlugConnected, IconSettings, IconSun, IconUsers, type Icon } from '@tabler/icons-react'
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ScreenGuard } from './ScreenGuard'
 import { OfflineBar } from './OfflineBar'
@@ -148,6 +148,7 @@ export default function AppLayout() {
                 {link({ path: '/parametros', icon: IconAdjustments, title: 'Parâmetros' })}
                 {link({ path: '/modelos-email', icon: IconMailCog, title: 'Modelos de e-mail' })}
                 {link({ path: '/dispositivos', icon: IconDeviceMobile, title: 'Dispositivos' })}
+                {link({ path: '/integracoes', icon: IconPlugConnected, title: 'Integrações' })}
                 {link({ path: '/configuracoes', icon: IconSettings, title: 'Configurações' })}
               </>
             )}

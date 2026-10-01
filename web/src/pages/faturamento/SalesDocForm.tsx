@@ -15,6 +15,7 @@ import { useAction } from '../../lib/hooks'
 import type { Product } from '../../lib/types'
 import { KIND, type DocKind } from './SalesDocs'
 import { EmailHistory, SendEmailModal } from './SendEmail'
+import { WhatsAppButton } from './SendWhatsApp'
 import { ItemTaxBadge, REGIMES, TaxTotalsBlock } from './TaxSummary'
 import type { ItemTaxes, Readiness, SalesDoc, SalesInvoice, SalesOrderItem, TaxTotals } from './types'
 
@@ -143,6 +144,11 @@ export default function SalesDocForm({ kind }: { kind: DocKind }) {
           {doc.status !== 'cancelado' && (
             <Tooltip label="Salve as alterações antes de enviar" disabled={!dirty}>
               <Button variant="light" leftSection={<IconMail size={16} />} onClick={() => setMailing(true)} disabled={dirty}>Enviar por e-mail</Button>
+            </Tooltip>
+          )}
+          {doc.status !== 'cancelado' && (
+            <Tooltip label="Salve as alterações antes de enviar" disabled={!dirty}>
+              <span><WhatsAppButton base={k.api} id={doc.id} code={doc.code} disabled={dirty} /></span>
             </Tooltip>
           )}
           {kind === 'quote' && doc.status === 'aberto' && !dirty && <Button leftSection={<IconTrophy size={16} />} onClick={win} loading={busy}>Ganho: gerar pedido</Button>}

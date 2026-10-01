@@ -10,6 +10,7 @@ import { useAction, useApi } from '../../lib/hooks'
 import { dateTime } from './SalesInvoices'
 import { ItemTaxBadge, REGIMES, TaxTotalsBlock } from './TaxSummary'
 import { NfePanel, SefazBadge } from './NfePanel'
+import { WhatsAppButton } from './SendWhatsApp'
 import type { SalesInvoice } from './types'
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -41,6 +42,7 @@ export default function SalesInvoiceDetail() {
         description={`${nf.model === '65' ? 'NFC-e' : 'NF-e'} série ${nf.series} · emitida em ${dateTime(nf.issuedAt)} · ${nf.operationLabel}${nf.orderCode ? ` · pedido ${nf.orderCode}` : ''} · ${nf.companyLabel}${nf.taxRegime ? ` · ${REGIMES[nf.taxRegime] ?? nf.taxRegime}` : ''}`}
         actions={<>
           <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => window.print()}>Imprimir espelho</Button>
+          {nf.sefazStatus === 'autorizada' && nf.status === 'emitida' && can(user, 'faturamento') && <WhatsAppButton base="/sales-invoices" id={nf.id} code={`NF ${nf.number}/${nf.series}`} label="DANFE no WhatsApp" />}
           {nf.status === 'emitida' && !['autorizada', 'erro'].includes(nf.sefazStatus) && can(user, 'faturamento') && <Button variant="subtle" color="red" leftSection={<IconX size={16} />} onClick={() => setCanceling(true)}>Cancelar nota</Button>}
         </>}
       />

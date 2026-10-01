@@ -6,7 +6,8 @@ import { AppModule } from './app.module'
 import { config } from './config'
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule)
+  // rawBody: o webhook do WhatsApp confere a assinatura da Meta sobre o corpo original.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })
   // XML de NF-e com muitos itens e certificados A1 passam de 100 KB.
   app.useBodyParser('json', { limit: '5mb' })
   app.setGlobalPrefix('api')
