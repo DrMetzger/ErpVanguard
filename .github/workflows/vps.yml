@@ -37,7 +37,15 @@ jobs:
           echo "== CPU/RAM";  nproc; free -h
           echo "== Disco";    df -h /
           echo "== Firewall"; sudo ufw status 2>/dev/null || true
-          echo "== Docker";   docker --version 2>/dev/null && docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || echo "Docker não instalado"
+          echo "== Docker";   docker --version 2>/dev/null && docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || echo "Docker não instalado"
+          echo "== Saúde (de dentro do servidor)"
+          for c in vanguard-api-1:3000 vanguard-control-1:3100; do
+            n=${c%:*}; p=${c#*:}
+            printf '%s: ' "$n"; sudo docker exec "$n" wget -qO- "http://127.0.0.1:$p/api/health" < /dev/null 2>&1 || echo "(sem resposta)"; echo
+          done
+          printf 'Painel pelo 127.0.0.1:3100: '; curl -s -m 5 http://127.0.0.1:3100/api/health || echo "(sem resposta)"; echo
+          echo "== Agente"; systemctl is-active vanguard-agent.service 2>/dev/null; sudo journalctl -u vanguard-agent.service -n 5 --no-pager -o cat 2>/dev/null
+          for n in vanguard-api-1 vanguard-control-1 vanguard-web-1; do echo "== Últimas linhas: $n"; sudo docker logs --tail 15 "$n" 2>&1 | grep -v RouterExplorer | tail -12; done
           REMOTE
 
       - name: Setup
