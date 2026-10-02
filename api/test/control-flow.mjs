@@ -174,6 +174,26 @@ try {
     assert.ok(!env.includes('ADMIN_PASSWORD'), 'senha provisória não volta ao recriar')
   })
 
+  await check('bloquear e desbloquear o acesso do cliente (fatura em aberto)', async () => {
+    const tryLogin = () => JSON.parse(execFileSync('docker', ['exec', `vanguard-t-${SLUG}`, 'node', '-e',
+      `fetch('http://localhost:3000/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'x@y.com',password:'z'})}).then(async r=>console.log(JSON.stringify({s:r.status,b:await r.json()})))`], { encoding: 'utf8' }))
+    assert.equal(tryLogin().s, 401) // liberado: só recusa a senha errada
+    await call(token, 'POST', `/tenants/${id()}/desbloquear`, undefined, 400) // não está bloqueado
+    await call(token, 'POST', `/tenants/${id()}/bloquear`)
+    let t = await waitTenant(token, id(), doneJob('bloquear'), 'bloquear', 60)
+    assert.equal(t.jobs[0].status, 'ok', t.jobs[0].message); assert.equal(t.blocked, true)
+    await sleep(11_000) // o sistema do cliente relê o bloqueio a cada 10 s
+    const blocked = tryLogin()
+    assert.equal(blocked.s, 403); assert.equal(blocked.b.code, 'ACCESS_BLOCKED')
+    assert.match(blocked.b.message, /Seu acesso encontra-se desativado\. Favor contactar a equipe de suporte pelo e-mail kleber\.farias@primeerp\.com\.br/)
+    assert.equal(t.online, true) // continua no ar (health), só o acesso fica bloqueado
+    await call(token, 'POST', `/tenants/${id()}/desbloquear`)
+    t = await waitTenant(token, id(), doneJob('desbloquear'), 'desbloquear', 60)
+    assert.equal(t.jobs[0].status, 'ok', t.jobs[0].message); assert.equal(t.blocked, false)
+    await sleep(11_000)
+    assert.equal(tryLogin().s, 401)
+  })
+
   await check('agente recusa pedido adulterado direto no banco do painel', async () => {
     const evil = `x$(touch /tmp/hacked-${SLUG})`
     dbExec('psql', '-X', '-q', '-U', 'vanguard', '-d', 'vanguard_control', '-c',

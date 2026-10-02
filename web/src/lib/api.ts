@@ -32,6 +32,10 @@ function onBlocked(data: any) {
   window.dispatchEvent(new CustomEvent('vanguard:device-blocked', { detail: data?.message ?? 'Este aparelho foi bloqueado pelo administrador' }))
 }
 export const setToken = storage.set
+// Cliente com acesso desativado pela Prime ERP (ex.: fatura em aberto): mostra o aviso no lugar das telas.
+function onAccessBlocked(data: any) {
+  window.dispatchEvent(new CustomEvent('vanguard:access-blocked', { detail: data?.message ?? 'Seu acesso encontra-se desativado. Favor contactar a equipe de suporte.' }))
+}
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public data?: unknown) {
@@ -81,6 +85,7 @@ export async function api<T = unknown>(path: string, options: { method?: Method;
 
   const data = await res.json().catch(() => null)
   if (res.status === 403 && data?.code === 'DEVICE_BLOCKED') onBlocked(data)
+  if (res.status === 403 && data?.code === 'ACCESS_BLOCKED') onAccessBlocked(data)
   // Filial guardada que deixou de estar liberada: volta para a padrão do usuário e tenta de novo.
   if (res.status === 403 && data?.code === 'BRANCH_DENIED' && branchId && !retried) {
     setBranchId(null)
@@ -110,6 +115,7 @@ setSender(async (w) => {
     if (res.status >= 500) return 'offline'
     const data = await res.json().catch(() => null)
     if (res.status === 403 && data?.code === 'DEVICE_BLOCKED') { onBlocked(data); return 'offline' }
+    if (res.status === 403 && data?.code === 'ACCESS_BLOCKED') { onAccessBlocked(data); return 'offline' }
     return { error: (Array.isArray(data?.message) ? data.message.join('; ') : data?.message) || `Erro ${res.status}` }
   } catch {
     return 'offline'

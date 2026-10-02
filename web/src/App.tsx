@@ -27,12 +27,16 @@ const Integrations = lazy(() => import('./pages/Integrations'))
 export default function App() {
   const { user, loading, logout } = useAuth()
   const [blocked, setBlocked] = useState<string | null>(null)
+  const [accessBlocked, setAccessBlocked] = useState<string | null>(null)
   useEffect(() => {
     const on = (e: Event) => { setBlocked((e as CustomEvent<string>).detail); logout() }
+    const onAccess = (e: Event) => setAccessBlocked((e as CustomEvent<string>).detail)
     window.addEventListener('vanguard:device-blocked', on)
-    return () => window.removeEventListener('vanguard:device-blocked', on)
+    window.addEventListener('vanguard:access-blocked', onAccess)
+    return () => { window.removeEventListener('vanguard:device-blocked', on); window.removeEventListener('vanguard:access-blocked', onAccess) }
   }, [logout])
-  if (blocked) return <BlockedScreen message={blocked} />
+  if (accessBlocked) return <BlockedScreen title="Acesso desativado" message={accessBlocked} />
+  if (blocked) return <BlockedScreen message={blocked} hint="Fale com o administrador do sistema da sua empresa para liberar este celular." />
   if (loading) return <Center h="100vh"><Loader type="dots" /></Center>
   if (!user) return <Login />
 
@@ -71,15 +75,15 @@ function FiscalRedirect() {
   return <Navigate to={`/cadastros/fiscal/${tab ?? ''}`} replace />
 }
 
-// Aparelho bloqueado pelo administrador (Administração › Dispositivos).
-function BlockedScreen({ message }: { message: string }) {
+// Aparelho bloqueado pelo administrador (Administração › Dispositivos) ou acesso do cliente desativado pela Prime ERP.
+function BlockedScreen({ title = 'Aparelho bloqueado', message, hint }: { title?: string; message: string; hint?: string }) {
   return (
     <Center mih="100vh" p="md">
       <Stack align="center" maw={420} ta="center">
         <ThemeIcon size={72} radius="xl" color="red" variant="light"><IconLock size={40} /></ThemeIcon>
-        <Title order={2}>Aparelho bloqueado</Title>
+        <Title order={2}>{title}</Title>
         <Text>{message}</Text>
-        <Text size="sm" c="dimmed">Fale com o administrador do sistema da sua empresa para liberar este celular.</Text>
+        {hint && <Text size="sm" c="dimmed">{hint}</Text>}
         <Button variant="default" onClick={() => window.location.reload()}>Tentar de novo</Button>
       </Stack>
     </Center>

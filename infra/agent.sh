@@ -161,6 +161,18 @@ do_update() {
   echo "Atualizado para a versão atual"
 }
 
+# Bloqueio de acesso do cliente (fatura em aberto): grava a chave no banco do cliente; o sistema dele
+# passa a mostrar "acesso desativado" em todas as telas e no login. Os dados não são tocados.
+do_block() {
+  if [ "$1" = true ]; then
+    docker exec -i "$DB" psql -X -q -U vanguard -d "$DBNAME" -v ON_ERROR_STOP=1 <<< "INSERT INTO app_settings (key, value, updated_at) VALUES ('access_block', '{\"blocked\": true}', now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()" \
+      && echo "Acesso bloqueado"
+  else
+    docker exec -i "$DB" psql -X -q -U vanguard -d "$DBNAME" -v ON_ERROR_STOP=1 <<< "DELETE FROM app_settings WHERE key = 'access_block'" \
+      && echo "Acesso liberado"
+  fi
+}
+
 # Executa um pedido. Tudo validado antes; ação fora da lista é recusada.
 handle() {
   local id="$1" kind="$2" slug="$3" email="$4" out rc
@@ -177,6 +189,8 @@ handle() {
     reiniciar) out="$(docker restart -t 20 "$CONTAINER" 2>&1 > /dev/null && wait_up && echo Reiniciado)"; rc=$? ;;
     atualizar) out="$(do_update 2>&1)"; rc=$? ;;
     backup)    out="$(do_backup manual 2>&1)"; rc=$? ;;
+    bloquear)    out="$(do_block true 2>&1)"; rc=$? ;;
+    desbloquear) out="$(do_block false 2>&1)"; rc=$? ;;
     *) finish "$id" erro "Ação não permitida"; log "ação recusada: $kind"; return ;;
   esac
   # A senha provisória sai pelo arquivo (subshell não devolve variável); guardada no painel até a configuração.

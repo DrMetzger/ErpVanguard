@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm'
 import { resolveBranch } from '../branches/branch.context'
 import type { Request } from 'express'
 import { UsersService } from '../users/users.service'
+import { ensureNotBlocked } from '../access/access-block'
 import { SESSION } from './auth.controller'
 import { IS_PUBLIC } from './public.decorator'
 
@@ -21,6 +22,9 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext) {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [context.getHandler(), context.getClass()])
     if (isPublic) return true
+
+    // Cliente bloqueado (fatura em aberto): nenhuma tela abre.
+    await ensureNotBlocked(this.db)
 
     const request = context.switchToHttp().getRequest<Request & { user?: unknown; branch?: string | null }>()
     const [type, token] = request.headers.authorization?.split(' ') ?? []

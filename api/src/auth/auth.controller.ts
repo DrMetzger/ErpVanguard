@@ -6,6 +6,7 @@ import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto'
 import type { Request } from 'express'
 import { DataSource } from 'typeorm'
 import { allowedBranches, branchList, CurrentBranch } from '../branches/branch.context'
+import { ensureNotBlocked } from '../access/access-block'
 import { one } from '../common/db'
 import { config } from '../config'
 import { MailService } from '../mail/mail.service'
@@ -87,6 +88,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   async login(@Req() req: Request, @Body() { email, password }: LoginDto) {
+    await ensureNotBlocked(this.db)
     const mailKey = email.toLowerCase().trim()
     throttle(`login:${req.ip}`, 40)
     throttle(`login:${mailKey}`)
@@ -121,6 +123,7 @@ export class AuthController {
   @Post('verify')
   @HttpCode(200)
   async verify(@Req() req: Request, @Body() dto: VerifyDto) {
+    await ensureNotBlocked(this.db)
     let payload: { sub: string; typ?: string }
     try {
       payload = await this.jwt.verifyAsync(dto.challenge)

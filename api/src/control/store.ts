@@ -30,11 +30,17 @@ export async function migrate() {
     -- Fila de pedidos para o agente da VPS (só ações da lista fechada).
     CREATE TABLE IF NOT EXISTS agent_jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-      kind varchar(20) NOT NULL CHECK (kind IN ('criar','suspender','reativar','reiniciar','atualizar','backup')),
+      kind varchar(20) NOT NULL,
       status varchar(12) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','executando','ok','erro')),
       message text, requested_by varchar(200), created_at timestamptz NOT NULL DEFAULT now(), started_at timestamptz, finished_at timestamptz);
     CREATE INDEX IF NOT EXISTS agent_jobs_pending ON agent_jobs (created_at) WHERE status = 'pendente';
     ALTER TABLE tenants ADD COLUMN IF NOT EXISTS setup_token text;
+    -- Acesso do cliente desativado (ex.: fatura em aberto).
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS blocked boolean NOT NULL DEFAULT false;
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS blocked_at timestamptz;
+    -- Lista fechada de ações que o agente aceita.
+    ALTER TABLE agent_jobs DROP CONSTRAINT IF EXISTS agent_jobs_kind_check;
+    ALTER TABLE agent_jobs ADD CONSTRAINT agent_jobs_kind_check CHECK (kind IN ('criar','suspender','reativar','reiniciar','atualizar','backup','bloquear','desbloquear'));
     CREATE TABLE IF NOT EXISTS agent_state (id int PRIMARY KEY DEFAULT 1 CHECK (id = 1), main_image varchar(100), seen_at timestamptz);
   `)
   if (control.ownerEmail) await db.query(`INSERT INTO control_admins (email, name) VALUES ($1, 'Administrador') ON CONFLICT (email) DO NOTHING`, [control.ownerEmail])

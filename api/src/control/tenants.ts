@@ -14,7 +14,7 @@ export const SLUG = /^[a-z][a-z0-9-]{1,28}[a-z0-9]$/
 const UF = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO']
 const SHARED = ['products', 'product_groups', 'customers', 'suppliers', 'price_tables', 'payment_terms', 'finance_categories', 'cost_centers', 'bank_accounts']
 // Ações que o painel pode pedir ao agente. Excluir cliente não existe aqui de propósito (só manual, na VPS).
-export const ACTIONS = ['suspender', 'reativar', 'reiniciar', 'atualizar', 'backup', 'refazer'] as const
+export const ACTIONS = ['suspender', 'reativar', 'reiniciar', 'atualizar', 'backup', 'refazer', 'bloquear', 'desbloquear'] as const
 
 export class TenantDto {
   @Matches(SLUG, { message: 'Endereço: 3 a 30 letras minúsculas, números ou hífen (ex.: stark)' }) slug: string
@@ -53,7 +53,7 @@ export class TenantsService {
   }
 
   async list() {
-    const rows = await q(`SELECT id, slug, name, document, admin_email AS "adminEmail", status, step, running, image_id AS "imageId", last_error AS "lastError", created_at AS "createdAt", updated_at AS "updatedAt",
+    const rows = await q(`SELECT id, slug, name, document, admin_email AS "adminEmail", status, step, running, blocked, blocked_at AS "blockedAt", image_id AS "imageId", last_error AS "lastError", created_at AS "createdAt", updated_at AS "updatedAt",
         (SELECT kind FROM agent_jobs j WHERE j.tenant_id = t.id AND j.status IN ('pendente','executando') ORDER BY created_at LIMIT 1) AS "pendingJob"
       FROM tenants t WHERE status <> 'excluido' ORDER BY name`)
     const main = await this.mainImage()
@@ -61,7 +61,7 @@ export class TenantsService {
   }
 
   async get(id: string) {
-    const t = await q1(`SELECT id, slug, name, document, admin_email AS "adminEmail", admin_name AS "adminName", status, step, setup, running, image_id AS "imageId", state_at AS "stateAt", last_error AS "lastError", created_at AS "createdAt", created_by AS "createdBy" FROM tenants WHERE id = $1`, [id])
+    const t = await q1(`SELECT id, slug, name, document, admin_email AS "adminEmail", admin_name AS "adminName", status, step, setup, running, blocked, blocked_at AS "blockedAt", image_id AS "imageId", state_at AS "stateAt", last_error AS "lastError", created_at AS "createdAt", created_by AS "createdBy" FROM tenants WHERE id = $1`, [id])
     if (!t) throw new NotFoundException('Cliente não encontrado')
     const events = await q(`SELECT kind, message, admin_email AS "adminEmail", created_at AS "createdAt" FROM tenant_events WHERE tenant_id = $1 ORDER BY id DESC LIMIT 100`, [id])
     const jobs = await q(`SELECT kind, status, message, requested_by AS "requestedBy", created_at AS "createdAt", finished_at AS "finishedAt" FROM agent_jobs WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`, [id])
@@ -108,7 +108,7 @@ export class TenantsService {
 
   async action(id: string, action: string, admin: string) {
     if (!(ACTIONS as readonly string[]).includes(action)) throw new BadRequestException('Ação desconhecida')
-    const t = await q1(`SELECT id, status FROM tenants WHERE id = $1`, [id])
+    const t = await q1(`SELECT id, status, blocked FROM tenants WHERE id = $1`, [id])
     if (!t) throw new NotFoundException('Cliente não encontrado')
     if (action === 'refazer') {
       if (!['erro', 'criando'].includes(t.status)) throw new BadRequestException('Só para cliente com erro na criação')
@@ -117,6 +117,8 @@ export class TenantsService {
     } else {
       if (['criando', 'erro'].includes(t.status) && action !== 'backup') throw new BadRequestException('Cliente ainda não foi criado: use "Refazer criação"')
       if (action === 'reiniciar' && t.status === 'suspenso') throw new BadRequestException('Cliente suspenso: reative primeiro')
+      if (action === 'bloquear' && t.blocked) throw new BadRequestException('O acesso deste cliente já está bloqueado')
+      if (action === 'desbloquear' && !t.blocked) throw new BadRequestException('O acesso deste cliente não está bloqueado')
       await this.enqueue(id, action, admin)
     }
     await this.event(id, 'acao', `Pedido: ${action}`, admin)
@@ -158,6 +160,8 @@ export class TenantsService {
       return
     }
     if (job.kind === 'suspender') await q(`UPDATE tenants SET status = 'suspenso' WHERE id = $1`, [tid])
+    if (job.kind === 'bloquear') await q(`UPDATE tenants SET blocked = true, blocked_at = now() WHERE id = $1`, [tid])
+    if (job.kind === 'desbloquear') await q(`UPDATE tenants SET blocked = false, blocked_at = NULL WHERE id = $1`, [tid])
     if (job.kind === 'reativar') await q(`UPDATE tenants SET status = 'ativo' WHERE id = $1`, [tid])
     if (job.kind === 'criar') {
       void this.configure(tid)

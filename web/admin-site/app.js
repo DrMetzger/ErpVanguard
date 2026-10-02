@@ -11,7 +11,7 @@ const SHARED = [
 const UF = 'AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' ')
 const REGIMES = [['simples', 'Simples Nacional'], ['simples_excesso', 'Simples (excesso de sublimite)'], ['mei', 'MEI'], ['presumido', 'Lucro Presumido'], ['real', 'Lucro Real']]
 const STATUS = { criando: ['Criando', 'warn'], ativo: ['Ativo', 'ok'], suspenso: ['Suspenso', 'warn'], erro: ['Erro', 'err'] }
-const JOBS = { criar: 'Criar sistema', suspender: 'Suspender', reativar: 'Reativar', reiniciar: 'Reiniciar', atualizar: 'Atualizar versão', backup: 'Backup' }
+const JOBS = { criar: 'Criar sistema', suspender: 'Suspender', reativar: 'Reativar', reiniciar: 'Reiniciar', atualizar: 'Atualizar versão', backup: 'Backup', bloquear: 'Bloquear acesso', desbloquear: 'Desbloquear acesso' }
 const JOB_STATUS = { pendente: ['Na fila', 'warn'], executando: ['Executando', 'warn'], ok: ['Concluído', 'ok'], erro: ['Erro', 'err'] }
 
 // ---------- utilidades ----------
@@ -172,7 +172,7 @@ async function listView() {
   else tbody.replaceChildren(...rows.map((t) => h('tr', { class: 'click', onclick: () => { location.hash = `#/cliente/${t.id}` } },
     h('td', {}, h('div', {}, t.name), h('div', { class: 'small muted' }, cnpjFmt(t.document))),
     h('td', {}, h('a', { href: t.url, target: '_blank', rel: 'noopener noreferrer', onclick: (e) => e.stopPropagation() }, `${t.slug}.${DOMAIN}`)),
-    h('td', {}, badge(STATUS[t.status] || [t.status, '']), t.pendingJob ? h('div', { class: 'small muted' }, `${JOBS[t.pendingJob] || t.pendingJob}…`) : null),
+    h('td', {}, badge(STATUS[t.status] || [t.status, '']), t.blocked ? [' ', badge(['Acesso bloqueado', 'err'])] : null, t.pendingJob ? h('div', { class: 'small muted' }, `${JOBS[t.pendingJob] || t.pendingJob}…`) : null),
     h('td', { class: 'hide-sm' }, h('span', { class: `dot ${t.online ? 'ok' : 'err'}` }), t.online ? 'Sim' : 'Não'),
     h('td', { class: 'hide-sm' }, t.updateAvailable ? badge(['Atualização disponível', 'warn']) : t.imageId ? 'Atual' : '—'),
     h('td', { class: 'hide-sm small' }, fmt(t.createdAt)))))
@@ -244,6 +244,9 @@ async function detailView(id) {
   }
   const ready = ['ativo', 'suspenso'].includes(t.status)
   const actions = h('div', { class: 'row' },
+    // Fatura em aberto: o sistema continua no ar, mas o cliente só vê o aviso de acesso desativado.
+    ready && !t.blocked ? act('bloquear', 'Bloquear acesso', `Bloquear o acesso de ${t.name}? Todos os usuários passam a ver "Seu acesso encontra-se desativado. Favor contactar a equipe de suporte pelo e-mail kleber.farias@primeerp.com.br". Os dados ficam guardados.`, 'danger') : null,
+    ready && t.blocked ? act('desbloquear', 'Desbloquear acesso', `Liberar o acesso de ${t.name}?`, 'primary') : null,
     ready && t.status === 'ativo' ? act('suspender', 'Suspender', `Suspender ${t.name}? O sistema sai do ar até reativar (os dados ficam).`, 'danger') : null,
     ready && t.status === 'suspenso' ? act('reativar', 'Reativar') : null,
     ready && t.status === 'ativo' ? act('reiniciar', 'Reiniciar', `Reiniciar o sistema de ${t.name}? Fica fora do ar por alguns segundos.`) : null,
@@ -252,7 +255,8 @@ async function detailView(id) {
     ['erro', 'criando'].includes(t.status) ? act('refazer', 'Refazer criação', null, 'primary') : null)
   mount(...shell(
     h('div', { class: 'card' },
-      h('div', { class: 'row' }, h('h2', { class: 'grow' }, t.name), badge(STATUS[t.status] || [t.status, ''])),
+      h('div', { class: 'row' }, h('h2', { class: 'grow' }, t.name), t.blocked ? badge(['Acesso bloqueado', 'err']) : null, badge(STATUS[t.status] || [t.status, ''])),
+      t.blocked ? h('p', { class: 'err' }, `Acesso bloqueado desde ${fmt(t.blockedAt)}: os usuários veem o aviso para falar com o suporte.`) : null,
       h('div', { class: 'grid small' },
         h('div', {}, h('div', { class: 'muted' }, 'Endereço'), h('a', { href: t.url, target: '_blank', rel: 'noopener noreferrer' }, t.url)),
         h('div', {}, h('div', { class: 'muted' }, 'CNPJ'), cnpjFmt(t.document)),
