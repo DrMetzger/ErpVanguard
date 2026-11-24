@@ -7,7 +7,7 @@ on:
       task:
         description: Tarefa
         type: choice
-        options: [status, setup, ai-check, users, diag]
+        options: [status, setup, ai-check, users, diag, caddy-files]
         default: status
 
 concurrency:
@@ -72,6 +72,19 @@ jobs:
           echo "== Arquivos extras em /opt/vanguard"; ls -la /opt/vanguard /opt/vanguard/app /opt/vanguard/app/web 2>/dev/null
           echo "== backups de Caddyfile"; timeout 15 find /opt /root /home /etc -maxdepth 5 -name "Caddyfile*" -not -path "*/node_modules/*" 2>/dev/null | head -20
           echo "== histórico"; grep -hE "Caddyfile|network connect|suporte|primehub" /root/.bash_history /home/*/.bash_history 2>/dev/null | tail -40
+          REMOTE
+
+      - name: Caddy files
+        if: inputs.task == 'caddy-files'
+        run: |
+          # Somente leitura: cópias do Caddyfile salvas pelo instalador do primehub.
+          ssh "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          for f in /opt/primehub/migracao/Caddyfile.novo /opt/primehub/migracao/Caddyfile.atual /opt/primehub/migracao/Caddyfile.original; do
+            echo "=================== $f ($(stat -c '%y' "$f"))"; cat "$f"
+          done
+          echo "=================== instalar.sh (trecho do Caddy)"; sed -n 60,140p /opt/primehub/app.anterior/deploy/vm/instalar.sh
+          echo "=================== caddy-protheus.sh"; cat /opt/primehub/app.anterior/deploy/protheus/caddy-protheus.sh
+          ls -la /opt/primehub /opt/primehub/migracao
           REMOTE
 
       - name: Users
