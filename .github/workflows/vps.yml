@@ -7,7 +7,7 @@ on:
       task:
         description: Tarefa
         type: choice
-        options: [status, setup, ai-check, users]
+        options: [status, setup, ai-check, users, diag]
         default: status
 
 concurrency:
@@ -50,8 +50,21 @@ jobs:
           for n in vanguard-api-1 vanguard-control-1 vanguard-web-1; do echo "== Últimas linhas: $n"; sudo docker logs --tail 15 "$n" 2>&1 | grep -v RouterExplorer | tail -12; done
           REMOTE
 
-      - name: Users
-        if: inputs.task == 'users'
+      - name: Diag
+        if: inputs.task == 'diag'
+        run: |
+          # Somente leitura: quem usa as portas 80/443 e quais sites existem na VPS.
+          ssh "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          echo "== Portas"; ss -ltnp | grep -E ':(80|443|8[0-9]{3}|3[0-9]{3}|5[0-9]{3}) ' || true
+          echo "== Containers"; docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}\t{{.Label "com.docker.compose.project"}}'
+          echo "== Projetos compose"; docker compose ls -a
+          echo "== Serviços web"; for s in nginx apache2 httpd caddy traefik; do printf '%s: ' $s; systemctl is-active $s 2>/dev/null || true; done
+          echo "== nginx sites"; ls -la /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null; grep -rn "server_name\|proxy_pass\|listen" /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | head -40
+          echo "== Pastas"; ls -la /opt /srv /var/www 2>/dev/null
+          echo "== grep suporte"; grep -rlI "suporte.primeerp" /etc /opt /srv /root /home 2>/dev/null | grep -v '/opt/vanguard/app' | head -20
+          echo "== Últimos eventos docker"; docker events --since 2h --until 0s --filter type=container --format '{{.Time}} {{.Action}} {{.Actor.Attributes.name}}' 2>/dev/null | grep -vE 'exec_|health' | tail -40
+          echo "== Logs web"; docker logs --tail 30 vanguard-web-1 2>&1 | grep -i "suporte\|error" | tail -15
+          REMOTE
         run: |
           # Só e-mail, perfil e situação (nunca senha).
           ssh "$VPS_USER@$VPS_HOST" 'sudo docker exec -i vanguard-db-1 psql -X -U vanguard -d vanguard' <<'SQL'
