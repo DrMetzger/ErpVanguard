@@ -57,6 +57,31 @@ jobs:
             --exclude node_modules --exclude dist \
             api web infra "$VPS_USER@$VPS_HOST:$APP_DIR/app/"
 
+      - name: Keep other sites in Caddy (Prime Hub)
+        run: |
+          # O Caddy do vanguard (portas 80/443) também atende sites de outros sistemas da VM
+          # (suporte.primeerp.com.br e protheus.primeerp.com.br, do /opt/primehub). O bloco deles fica
+          # entre "# >>> Prime Hub" e "# <<< Prime Hub"; o rsync acima trouxe o Caddyfile do repositório
+          # sem ele, então o bloco é recolocado aqui antes do build. Sem isso o deploy derruba esses sites.
+          ssh "$VPS_USER@$VPS_HOST" "sudo APP_DIR=$APP_DIR bash -s" <<'REMOTE'
+          set -euo pipefail
+          f="$APP_DIR/app/web/Caddyfile"
+          bloco=""
+          # 1) o que está no ar agora; 2) a última configuração gerada pelo instalador do primehub
+          if docker ps --format '{{.Names}}' | grep -qx vanguard-web-1; then
+            bloco=$(docker exec vanguard-web-1 cat /etc/caddy/Caddyfile 2>/dev/null | awk '/^# >>> Prime Hub/{p=1} p' || true)
+          fi
+          if [ -z "$bloco" ] && [ -f /opt/primehub/migracao/Caddyfile.novo ]; then
+            bloco=$(awk '/^# >>> Prime Hub/{p=1} p' /opt/primehub/migracao/Caddyfile.novo)
+          fi
+          if [ -n "$bloco" ]; then
+            { awk '/^# >>> Prime Hub/{exit} {print}' "$f"; echo; echo "$bloco"; } > "$f.tmp" && mv "$f.tmp" "$f"
+            echo "Bloco do Prime Hub mantido no Caddyfile: $(echo "$bloco" | grep -cE '^[a-z0-9.-]+ \{') site(s)"
+          else
+            echo "Nenhum site extra no Caddy"
+          fi
+          REMOTE
+
       - name: Panel secrets
         run: |
           # Senhas do painel geradas no próprio servidor, uma única vez (antes de qualquer docker compose).
@@ -275,6 +300,19 @@ jobs:
           echo "::error::O painel não respondeu em https://admin.erpvanguard.com.br/api/health"
           ssh "$VPS_USER@$VPS_HOST" "cd $APP_DIR/app/infra && sudo docker compose --env-file $APP_DIR/.env ps; sudo docker compose --env-file $APP_DIR/.env logs --tail 40 control web" || true
           exit 1
+
+      - name: Check other sites (Prime Hub)
+        run: |
+          # Os sites do Prime Hub atendidos por este Caddy precisam continuar no ar depois do deploy.
+          sites=$(ssh "$VPS_USER@$VPS_HOST" "sudo docker exec vanguard-web-1 cat /etc/caddy/Caddyfile" | awk '/^# >>> Prime Hub/{p=1} p && /^[a-z0-9.-]+ \{/{print $1}')
+          [ -n "$sites" ] || { echo "Nenhum site extra no Caddy"; exit 0; }
+          fail=0
+          for s in $sites; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "https://$s/" || echo erro)
+            echo "$s: $code"
+            case "$code" in 2*|3*|401|403) ;; *) fail=1 ;; esac
+          done
+          [ $fail = 0 ] || { echo "::error::Algum site do Prime Hub não respondeu depois do deploy"; exit 1; }
 
       - name: Check e-mail (SMTP)
         run: |
