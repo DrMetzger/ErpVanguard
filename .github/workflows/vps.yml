@@ -7,7 +7,7 @@ on:
       task:
         description: Tarefa
         type: choice
-        options: [status, setup, ai-check, users, diag, caddy-files]
+        options: [status, setup, ai-check, users, diag, caddy-files, restore-caddy]
         default: status
 
 concurrency:
@@ -85,6 +85,35 @@ jobs:
           echo "=================== instalar.sh (trecho do Caddy)"; sed -n 60,140p /opt/primehub/app.anterior/deploy/vm/instalar.sh
           echo "=================== caddy-protheus.sh"; cat /opt/primehub/app.anterior/deploy/protheus/caddy-protheus.sh
           ls -la /opt/primehub /opt/primehub/migracao
+          REMOTE
+
+      - name: Restore Caddy (Prime Hub)
+        if: inputs.task == 'restore-caddy'
+        run: |
+          # Recoloca no Caddy do vanguard o bloco do Prime Hub (suporte/protheus) salvo pelo instalador
+          # do primehub. Valida antes; se o Caddy recusar, volta a configuração anterior. Sem reiniciar.
+          ssh "$VPS_USER@$VPS_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          src=/opt/primehub/migracao/Caddyfile.novo
+          bloco=$(awk '/^# >>> Prime Hub/{p=1} p' "$src")
+          [ -n "$bloco" ] || { echo "bloco do Prime Hub não encontrado em $src"; exit 1; }
+          docker cp vanguard-web-1:/etc/caddy/Caddyfile /tmp/Caddyfile.atual
+          { awk '/^# >>> Prime Hub/{exit} {print}' /tmp/Caddyfile.atual; echo; echo "$bloco"; } > /tmp/Caddyfile.novo
+          docker cp /tmp/Caddyfile.novo vanguard-web-1:/etc/caddy/Caddyfile
+          if docker exec vanguard-web-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 \
+             && docker exec vanguard-web-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+            echo "Caddy recarregado com o bloco do Prime Hub"
+            cp /tmp/Caddyfile.novo /opt/vanguard/app/web/Caddyfile
+          else
+            echo "Caddy recusou; voltando a configuração anterior"
+            docker cp /tmp/Caddyfile.atual vanguard-web-1:/etc/caddy/Caddyfile
+            docker exec vanguard-web-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+            exit 1
+          fi
+          sleep 5
+          for u in https://suporte.primeerp.com.br/ https://suporte.primeerp.com.br/painel https://protheus.primeerp.com.br/ https://app.erpvanguard.com.br/api/health https://admin.erpvanguard.com.br/api/health; do
+            printf '%s: ' "$u"; curl -sS -o /dev/null -w '%{http_code}\n' --max-time 60 "$u" || true
+          done
           REMOTE
 
       - name: Users
