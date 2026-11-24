@@ -1,10 +1,19 @@
 name: VPS SSH
-description: Configura a chave SSH da VPS (secret VPS_SSH_KEY) no runner
+description: >
+  Configura o acesso SSH à VPS no runner. Aceita chave (VPS_SSH_KEY) ou senha
+  (PSW_VM). Com senha, um "ssh" no PATH usa sshpass, então ssh e rsync funcionam igual.
 inputs:
   host:
     required: true
   key:
-    required: true
+    required: false
+    default: ''
+  user:
+    required: false
+    default: root
+  password:
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -12,19 +21,27 @@ runs:
       env:
         VPS_HOST: ${{ inputs.host }}
         VPS_SSH_KEY: ${{ inputs.key }}
+        VPS_USER: ${{ inputs.user }}
+        VPS_PASSWORD: ${{ inputs.password }}
       run: |
-        if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
-          echo "::error::Configure os secrets VPS_HOST e VPS_SSH_KEY em Settings > Secrets and variables > Actions"
+        if [ -z "$VPS_HOST" ]; then
+          echo "::error::Configure o secret IP_VM (ou VPS_HOST) em Settings > Secrets and variables > Actions"
+          exit 1
+        fi
+        if [ -z "$VPS_SSH_KEY" ] && [ -z "$VPS_PASSWORD" ]; then
+          echo "::error::Configure o secret PSW_VM (senha) ou VPS_SSH_KEY (chave) em Settings > Secrets and variables > Actions"
           exit 1
         fi
         install -d -m 700 ~/.ssh
-        # Keys pasted from a Windows terminal often arrive with CRLF, trailing
-        # spaces or all on one line; rebuild the standard PEM layout.
-        python3 - <<'PY'
+        ssh-keyscan -T 15 "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+        if [ -n "$VPS_SSH_KEY" ]; then
+          # Keys pasted from a Windows terminal often arrive with CRLF, trailing
+          # spaces or all on one line; rebuild the standard PEM layout.
+          python3 - <<'PY'
         import base64, os, re
         raw = os.environ["VPS_SSH_KEY"].replace("\r", "")
         if "-----BEGIN" not in raw:
-            # Also accept the key as a single base64 line (base64 -w0 ~/.ssh/github_actions).
             try:
                 raw = base64.b64decode(re.sub(r"\s+", "", raw), validate=True).decode()
             except Exception:
@@ -42,9 +59,39 @@ runs:
             f.write(key)
         os.chmod(path, 0o600)
         PY
-        if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null; then
-          echo "::error::VPS_SSH_KEY está incompleta ou corrompida. Copie de novo o bloco inteiro de ~/.ssh/github_actions"
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null; then
+            echo "::error::VPS_SSH_KEY está incompleta ou corrompida"
+            exit 1
+          fi
+          echo "Acesso por chave: $(ssh-keygen -l -f ~/.ssh/id_ed25519)"
+        else
+          # Login por senha: "ssh" no PATH passa a senha pelo sshpass (variável SSHPASS, nunca na linha de comando).
+          sudo apt-get install -y -qq sshpass > /dev/null
+          install -d ~/vps-bin
+          cat > ~/vps-bin/ssh <<'SH'
+        #!/usr/bin/env bash
+        exec sshpass -e /usr/bin/ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ServerAliveInterval=30 "$@"
+        SH
+          chmod +x ~/vps-bin/ssh
+          echo "$HOME/vps-bin" >> "$GITHUB_PATH"
+          {
+            echo "SSHPASS<<__VPS_EOF__"
+            printf '%s\n' "$VPS_PASSWORD"
+            echo "__VPS_EOF__"
+          } >> "$GITHUB_ENV"
+          export PATH="$HOME/vps-bin:$PATH" SSHPASS="$VPS_PASSWORD"
+          echo "Acesso por senha (usuário $VPS_USER)"
+        fi
+
+        # Testa a conexão.
+        if ! PATH="$HOME/vps-bin:$PATH" SSHPASS="$VPS_PASSWORD" ssh -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" true; then
+          echo "::error::Não consegui entrar em $VPS_USER@$VPS_HOST por SSH (confira IP_VM, USER_VM e PSW_VM)"
           exit 1
         fi
-        echo "Chave carregada: $(ssh-keygen -l -f ~/.ssh/id_ed25519)"
-        ssh-keyscan -T 15 "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+        echo "SSH OK em $VPS_HOST"
+
+        # Usuário que não é root: libera sudo sem senha uma única vez (os passos do deploy usam sudo).
+        if [ "$VPS_USER" != "root" ] && [ -n "$VPS_PASSWORD" ]; then
+          PATH="$HOME/vps-bin:$PATH" SSHPASS="$VPS_PASSWORD" ssh "$VPS_USER@$VPS_HOST" \
+            "sudo -n true 2>/dev/null || { printf '%s\n' \"\$(cat)\" | sudo -S -p '' sh -c 'echo \"$VPS_USER ALL=(ALL) NOPASSWD:ALL\" > /etc/sudoers.d/90-vanguard-deploy && chmod 440 /etc/sudoers.d/90-vanguard-deploy'; }" <<< "$VPS_PASSWORD"
+        fi

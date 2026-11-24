@@ -6,7 +6,7 @@ name: Android
 # chave de upload, gera também o AAB assinado para a Play Store.
 on:
   push:
-    branches: [main, claude/keen-dirac-i5mx15]
+    branches: [main, claude/magical-archimedes-fsrqy8, claude/keen-dirac-i5mx15]
     paths:
       - 'web/**'
       - 'mobile/**'
@@ -95,14 +95,16 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/vps-ssh
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_HOST || secrets.IP_VM }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          user: ${{ secrets.VPS_USER || secrets.USER_VM || 'root' }}
+          password: ${{ secrets.PSW_VM }}
 
       - name: Publish on app.erpvanguard.com.br/download
         if: steps.ssh.outcome == 'success'
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+          VPS_HOST: ${{ secrets.VPS_HOST || secrets.IP_VM }}
+          VPS_USER: ${{ secrets.VPS_USER || secrets.USER_VM || 'root' }}
         run: |
           ssh "$VPS_USER@$VPS_HOST" "sudo install -d /opt/vanguard/downloads"
           rsync -az --rsync-path="sudo rsync" out/ "$VPS_USER@$VPS_HOST:/opt/vanguard/downloads/"

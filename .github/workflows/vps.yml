@@ -18,16 +18,18 @@ jobs:
   run:
     runs-on: ubuntu-latest
     env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+      VPS_HOST: ${{ secrets.VPS_HOST || secrets.IP_VM }}
+      VPS_USER: ${{ secrets.VPS_USER || secrets.USER_VM || 'root' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure SSH
         uses: ./.github/actions/vps-ssh
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_HOST || secrets.IP_VM }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          user: ${{ secrets.VPS_USER || secrets.USER_VM || 'root' }}
+          password: ${{ secrets.PSW_VM }}
 
       - name: Status
         if: inputs.task == 'status'

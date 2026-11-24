@@ -2,7 +2,7 @@ name: Deploy ERP
 
 on:
   push:
-    branches: [main, claude/keen-dirac-i5mx15]
+    branches: [main, claude/magical-archimedes-fsrqy8, claude/keen-dirac-i5mx15]
     paths:
       - 'api/**'
       - 'web/**'
@@ -27,16 +27,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+      VPS_HOST: ${{ secrets.VPS_HOST || secrets.IP_VM }}
+      VPS_USER: ${{ secrets.VPS_USER || secrets.USER_VM || 'root' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure SSH
         uses: ./.github/actions/vps-ssh
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_HOST || secrets.IP_VM }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          user: ${{ secrets.VPS_USER || secrets.USER_VM || 'root' }}
+          password: ${{ secrets.PSW_VM }}
+
+      - name: Prepare VPS (first time)
+        run: |
+          # VM nova: instala Docker, firewall (22/80/443), swap e fuso horário. Depois só confere.
+          if ssh "$VPS_USER@$VPS_HOST" "command -v docker >/dev/null && docker compose version >/dev/null 2>&1"; then
+            echo "Docker já instalado: VPS pronta"
+          else
+            echo "Docker não encontrado: preparando a VPS (infra/vps-setup.sh)"
+            ssh "$VPS_USER@$VPS_HOST" 'sudo bash -s' < infra/vps-setup.sh
+          fi
 
       - name: Upload source
         run: |

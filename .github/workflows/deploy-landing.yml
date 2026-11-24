@@ -2,7 +2,7 @@ name: Deploy landing page
 
 on:
   push:
-    branches: [main, claude/keen-dirac-i5mx15]
+    branches: [main, claude/magical-archimedes-fsrqy8, claude/keen-dirac-i5mx15]
     paths:
       - 'landing/**'
       - '.github/workflows/deploy-landing.yml'
