@@ -61,8 +61,9 @@ jobs:
           echo "== Serviços web"; for s in nginx apache2 httpd caddy traefik; do printf '%s: ' $s; systemctl is-active $s 2>/dev/null || true; done
           echo "== nginx sites"; ls -la /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null; grep -rn "server_name\|proxy_pass\|listen" /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | head -40
           echo "== Pastas"; ls -la /opt /srv /var/www 2>/dev/null
-          echo "== grep suporte"; grep -rlI "suporte.primeerp" /etc /opt /srv /root /home 2>/dev/null | grep -v '/opt/vanguard/app' | head -20
-          echo "== Últimos eventos docker"; docker events --since 2h --until 0s --filter type=container --format '{{.Time}} {{.Action}} {{.Actor.Attributes.name}}' 2>/dev/null | grep -vE 'exec_|health' | tail -40
+          echo "== grep suporte"; timeout 20 grep -rlI --exclude-dir=node_modules --exclude-dir=.git "suporte.primeerp" /etc /opt /srv /root /home 2>/dev/null | grep -v '/opt/vanguard/app' | head -20
+          echo "== Últimos eventos docker"; timeout 15 docker events --since 3h --until "$(date +%s)" --filter type=container --format '{{.Time}} {{.Action}} {{.Actor.Attributes.name}}' 2>/dev/null | grep -vE 'exec_|health' | tail -40
+          echo "== Containers parados (criados/encerrados)"; docker ps -a --filter status=exited --format '{{.Names}} {{.Image}} {{.Status}}'
           echo "== Logs web"; docker logs --tail 30 vanguard-web-1 2>&1 | grep -i "suporte\|error" | tail -15
           REMOTE
 
